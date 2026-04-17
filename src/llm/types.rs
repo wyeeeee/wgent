@@ -107,6 +107,7 @@ pub struct ApiResponse {
 }
 
 #[derive(Deserialize)]
+#[serde(tag = "type")]
 pub(super) enum ApiContentBlockResp {
     #[serde(rename = "text")]
     Text { text: String },

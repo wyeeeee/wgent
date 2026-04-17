@@ -7,21 +7,28 @@ use crate::llm::error::LlmError;
 use crate::llm::provider::LlmProvider;
 use crate::llm::types::{ChatRequest, ChatResponse};
 
-const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
+const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 pub struct AnthropicProvider {
     client: Client,
     api_key: String,
+    base_url: String,
     model: String,
     max_tokens: u32,
 }
 
 impl AnthropicProvider {
     pub fn new(api_key: String, model: String) -> Self {
+        Self::with_base_url(api_key, model, DEFAULT_BASE_URL.to_string())
+    }
+
+    pub fn with_base_url(api_key: String, model: String, base_url: String) -> Self {
+        let base_url = base_url.trim_end_matches('/').to_string();
         Self {
             client: Client::new(),
             api_key,
+            base_url,
             model,
             max_tokens: 4096,
         }
@@ -45,7 +52,7 @@ impl LlmProvider for AnthropicProvider {
 
         let resp = self
             .client
-            .post(ANTHROPIC_API_URL)
+            .post(format!("{}/v1/messages", self.base_url))
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
@@ -64,15 +71,20 @@ impl LlmProvider for AnthropicProvider {
             .into());
         }
 
-        let api_resp: serde_json::Value = resp
-            .json()
+        let raw = resp
+            .text()
             .await
             .map_err(|e| LlmError::ParseError(e.to_string()))?;
 
-        debug!("Anthropic API response received, parsing...");
+        debug!("Raw API response: {raw}");
+
+        let api_resp: serde_json::Value = serde_json::from_str(&raw)
+            .map_err(|e| LlmError::ParseError(format!("JSON parse failed: {e}, body: {raw}")))?;
 
         let typed_resp: crate::llm::types::ApiResponse =
-            serde_json::from_value(api_resp).map_err(|e| LlmError::ParseError(e.to_string()))?;
+            serde_json::from_value(api_resp).map_err(|e| {
+                LlmError::ParseError(format!("Response struct parse failed: {e}, body: {raw}"))
+            })?;
 
         let chat_response = ChatResponse::try_from(typed_resp)
             .map_err(|e| LlmError::ParseError(e))?;

@@ -31,8 +31,10 @@ async fn main() -> Result<()> {
         .expect("请设置 ANTHROPIC_API_KEY 环境变量");
     let model = std::env::var("ANTHROPIC_MODEL")
         .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string());
+    let base_url = std::env::var("ANTHROPIC_BASE_URL")
+        .unwrap_or_else(|_| "https://api.anthropic.com".to_string());
 
-    let llm = Arc::new(AnthropicProvider::new(api_key, model));
+    let llm = Arc::new(AnthropicProvider::with_base_url(api_key, model, base_url));
     let transport = Arc::new(TerminalTransport::new());
     let prompts = Arc::new(PromptManager::new()?);
     let tools = ToolRegistry::new();
