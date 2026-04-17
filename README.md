@@ -1,16 +1,16 @@
 # Agent
 
-基于 Rust 的 AI Agent 框架，采用模块化单 crate 架构，核心层与 UI 层完全隔离。
+基于 Rust 的 AI Agent 框架，模块化单 crate 架构，核心 SDK 与 UI 层完全隔离。
 
 ## 项目结构
 
 ```
 src/
-├── main.rs              # 入口：组装各模块，启动 agent
-├── core/                # 核心层：agent 循环、消息、会话
-│   ├── agent.rs         # Agent 主循环（输入→LLM→工具→输出）
-│   ├── message.rs       # 统一消息类型
-│   ├── conversation.rs  # 会话状态与历史管理
+├── main.rs              # 入口：组装各模块，UI 驱动主循环
+├── core/                # 核心 SDK 层（无 IO 依赖）
+│   ├── agent.rs         # Agent SDK：chat(session_id, msg) -> Stream<AgentEvent>
+│   ├── session.rs       # Session + SessionManager（内存缓存 + JSON 持久化）
+│   ├── message.rs       # 统一消息类型（可序列化）
 │   └── error.rs         # 核心错误类型
 ├── llm/                 # LLM 层：仅 Anthropic，仅 function calling
 │   ├── provider.rs      # LlmProvider trait
@@ -32,6 +32,22 @@ src/
     └── terminal.rs      # TerminalTransport 实现
 ```
 
+## 架构设计
+
+```
+UI 层 (term/web/...) 驱动主循环
+  ↓ 调用
+Core SDK: agent.chat(session_id, msg) → Receiver<AgentEvent>
+  ↓ 内部编排
+  LLM (Anthropic) → Tools → Loop → 返回事件流
+  ↓ 自动持久化
+  SessionManager: 内存缓存 → JSON 文件
+```
+
+- Core 是纯 SDK，不知道上层是什么（终端、Web、SDK 调用）
+- Session 通过 ID 管理，支持多会话并发
+- 上下文内存缓存，每轮结束后持久化到 JSON
+
 ## 配置
 
 复制 `.env.example` 为 `.env` 并填入 API Key：
@@ -40,17 +56,15 @@ src/
 cp .env.example .env
 ```
 
+| 环境变量 | 说明 | 默认值 |
+|---------|------|-------|
+| `ANTHROPIC_API_KEY` | Anthropic API 密钥 | （必填）|
+| `ANTHROPIC_MODEL` | 模型名称 | `claude-sonnet-4-20250514` |
+| `ANTHROPIC_BASE_URL` | API 基础地址 | `https://api.anthropic.com` |
+| `AGENT_DATA_DIR` | Session 数据存储目录 | `data/sessions` |
+
 ## 运行
 
 ```bash
 cargo run
-```
-
-## 依赖关系
-
-```
-main → core → llm (Anthropic)
-             → tools (空置)
-             → prompt (Tera 模板)
-             → transport ← term (终端)
 ```

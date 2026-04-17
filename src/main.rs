@@ -5,7 +5,9 @@ mod term;
 mod tools;
 mod transport;
 
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use tracing::info;
@@ -15,6 +17,7 @@ use llm::AnthropicProvider;
 use prompt::PromptManager;
 use term::TerminalTransport;
 use tools::ToolRegistry;
+use transport::Transport;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -33,16 +36,51 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string());
     let base_url = std::env::var("ANTHROPIC_BASE_URL")
         .unwrap_or_else(|_| "https://api.anthropic.com".to_string());
+    let data_dir = std::env::var("AGENT_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("data/sessions"));
 
     let llm = Arc::new(AnthropicProvider::with_base_url(api_key, model, base_url));
-    let transport = Arc::new(TerminalTransport::new());
+    let transport = TerminalTransport::new();
     let prompts = Arc::new(PromptManager::new()?);
     let tools = ToolRegistry::new();
 
     info!("Agent initialized, model={}", llm.model_name());
 
-    let mut agent = Agent::new(llm, tools, transport, prompts, 100);
-    agent.run().await?;
+    let agent = Arc::new(Agent::new(llm, tools, prompts, data_dir));
 
-    Ok(())
+    let session_id = generate_session_id();
+    info!("session: {session_id}");
+
+    // UI 驱动主循环
+    loop {
+        let input = transport.read_input().await?;
+        if input.trim().is_empty() {
+            continue;
+        }
+
+        let mut rx = agent.chat(&session_id, &input).await?;
+        while let Some(event) = rx.recv().await {
+            transport.send_event(event).await?;
+        }
+    }
+}
+
+fn generate_session_id() -> String {
+    let ns = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    // 简单 FNV-1a hash 取 8 位 hex
+    let hash = fnv1a(&ns.to_le_bytes());
+    format!("{hash:08x}")
+}
+
+fn fnv1a(data: &[u8]) -> u32 {
+    let mut hash: u32 = 0x811c9dc5;
+    for &b in data {
+        hash ^= b as u32;
+        hash = hash.wrapping_mul(0x01000193);
+    }
+    hash
 }
