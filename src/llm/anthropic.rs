@@ -7,7 +7,6 @@ use crate::llm::error::LlmError;
 use crate::llm::provider::LlmProvider;
 use crate::llm::types::{ChatRequest, ChatResponse};
 
-const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 pub struct AnthropicProvider {
@@ -19,10 +18,6 @@ pub struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
-    pub fn new(api_key: String, model: String) -> Self {
-        Self::with_base_url(api_key, model, DEFAULT_BASE_URL.to_string())
-    }
-
     pub fn with_base_url(api_key: String, model: String, base_url: String) -> Self {
         let base_url = base_url.trim_end_matches('/').to_string();
         Self {

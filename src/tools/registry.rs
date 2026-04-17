@@ -18,10 +18,12 @@ impl ToolRegistry {
         }
     }
 
+    #[allow(dead_code)]
     pub fn register(&mut self, tool: Box<dyn Tool>) {
         self.tools.insert(tool.name().to_string(), tool);
     }
 
+    #[allow(dead_code)]
     pub fn get(&self, name: &str) -> Option<&dyn Tool> {
         self.tools.get(name).map(|t| t.as_ref())
     }
@@ -46,6 +48,7 @@ impl ToolRegistry {
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.tools.is_empty()
     }

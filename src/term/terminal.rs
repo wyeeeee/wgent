@@ -1,10 +1,12 @@
 use std::io::{self, Write};
+use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
 use colored::Colorize;
 use tracing::debug;
 
+use crate::core::Agent;
 use crate::transport::{AgentEvent, Transport};
 
 pub struct TerminalTransport;
@@ -12,6 +14,21 @@ pub struct TerminalTransport;
 impl TerminalTransport {
     pub fn new() -> Self {
         Self
+    }
+
+    /// 终端 UI 主循环
+    pub async fn run(&self, agent: Arc<Agent>, session_id: &str) -> Result<()> {
+        loop {
+            let input = self.read_input().await?;
+            if input.trim().is_empty() {
+                continue;
+            }
+
+            let mut rx = agent.chat(session_id, &input).await?;
+            while let Some(event) = rx.recv().await {
+                self.send_event(event).await?;
+            }
+        }
     }
 }
 

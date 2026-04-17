@@ -3,6 +3,7 @@ use async_trait::async_trait;
 
 /// Agent → UI 的事件流
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum AgentEvent {
     /// 模型正在思考（可选展示）
     Thinking(String),

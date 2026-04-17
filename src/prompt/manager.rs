@@ -42,6 +42,7 @@ impl PromptManager {
         self.render("tool_error", &ctx)
     }
 
+    #[allow(dead_code)]
     pub fn render_tool_result(&self, tool_name: &str, result: &str) -> Result<String> {
         let mut ctx = Context::new();
         ctx.insert("tool_name", tool_name);

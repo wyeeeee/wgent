@@ -41,6 +41,7 @@ pub struct ToolDefinition {
 // ── 响应类型 ──
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct ChatResponse {
     pub id: String,
     pub model: String,

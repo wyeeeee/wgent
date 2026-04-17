@@ -10,7 +10,4 @@ pub enum LlmError {
 
     #[error("Failed to parse response: {0}")]
     ParseError(String),
-
-    #[error("Max retries exceeded")]
-    MaxRetriesExceeded,
 }

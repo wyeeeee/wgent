@@ -17,7 +17,6 @@ use llm::AnthropicProvider;
 use prompt::PromptManager;
 use term::TerminalTransport;
 use tools::ToolRegistry;
-use transport::Transport;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -41,29 +40,17 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| PathBuf::from("data/sessions"));
 
     let llm = Arc::new(AnthropicProvider::with_base_url(api_key, model, base_url));
-    let transport = TerminalTransport::new();
     let prompts = Arc::new(PromptManager::new()?);
     let tools = ToolRegistry::new();
 
     info!("Agent initialized, model={}", llm.model_name());
 
     let agent = Arc::new(Agent::new(llm, tools, prompts, data_dir));
-
     let session_id = generate_session_id();
     info!("session: {session_id}");
 
-    // UI 驱动主循环
-    loop {
-        let input = transport.read_input().await?;
-        if input.trim().is_empty() {
-            continue;
-        }
-
-        let mut rx = agent.chat(&session_id, &input).await?;
-        while let Some(event) = rx.recv().await {
-            transport.send_event(event).await?;
-        }
-    }
+    let transport = TerminalTransport::new();
+    transport.run(agent, &session_id).await
 }
 
 fn generate_session_id() -> String {
@@ -71,7 +58,6 @@ fn generate_session_id() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    // 简单 FNV-1a hash 取 8 位 hex
     let hash = fnv1a(&ns.to_le_bytes());
     format!("{hash:08x}")
 }

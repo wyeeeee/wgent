@@ -4,6 +4,4 @@ pub mod provider;
 pub mod types;
 
 pub use anthropic::AnthropicProvider;
-pub use error::LlmError;
-pub use provider::LlmProvider;
 pub use types::*;
