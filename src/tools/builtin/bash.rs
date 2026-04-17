@@ -79,7 +79,11 @@ fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("{}...\n[输出被截断，共 {} 字符]", &s[..max], s.len())
+        let mut end = max;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...\n[输出被截断，共 {} 字符]", &s[..end], s.len())
     }
 }
 
