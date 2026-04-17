@@ -12,7 +12,7 @@ pub enum AgentEvent {
     /// 完整文本响应
     TextComplete(String),
     /// 工具调用开始
-    ToolCallStart { id: String, name: String },
+    ToolCallStart { id: String, name: String, input_preview: String },
     /// 工具调用结束
     ToolCallEnd { id: String, name: String, result: String },
     /// 错误信息

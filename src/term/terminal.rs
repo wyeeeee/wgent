@@ -56,8 +56,8 @@ impl Transport for TerminalTransport {
             AgentEvent::TextComplete(text) => {
                 println!("{}", text.white());
             }
-            AgentEvent::ToolCallStart { name, .. } => {
-                println!("  {} {}", "⟳".yellow(), format!("调用工具: {name}").yellow());
+            AgentEvent::ToolCallStart { name, input_preview, .. } => {
+                println!("  {} {}: {}", "⟳".yellow(), format!("{name}").yellow(), input_preview.dimmed());
             }
             AgentEvent::ToolCallEnd { name, result, .. } => {
                 let preview = if result.len() > 200 {
