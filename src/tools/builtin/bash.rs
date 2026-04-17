@@ -19,7 +19,7 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &str {
-        "在 bash shell 中执行命令，工作目录为当前会话的工作目录。超时 60 秒。"
+        "在系统 shell 中执行命令（Windows: pwsh, Unix: bash），工作目录为当前会话的工作目录。超时 60 秒。"
     }
 
     fn input_schema(&self) -> Value {
@@ -28,7 +28,7 @@ impl Tool for BashTool {
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "要执行的 bash 命令"
+                    "description": "要执行的 shell 命令"
                 }
             },
             "required": ["command"]
@@ -46,11 +46,7 @@ impl Tool for BashTool {
 
         let output = tokio::time::timeout(
             Duration::from_secs(TIMEOUT_SECS),
-            tokio::process::Command::new("bash")
-                .arg("-c")
-                .arg(command)
-                .current_dir(working_dir)
-                .output(),
+            shell_command(command, working_dir),
         )
         .await
         .map_err(|_| anyhow!("命令执行超时（{}秒）", TIMEOUT_SECS))?
@@ -84,5 +80,25 @@ fn truncate(s: &str, max: usize) -> String {
         s.to_string()
     } else {
         format!("{}...\n[输出被截断，共 {} 字符]", &s[..max], s.len())
+    }
+}
+
+/// 按平台选择 shell 执行命令
+async fn shell_command(command: &str, working_dir: &Path) -> std::io::Result<std::process::Output> {
+    if cfg!(windows) {
+        tokio::process::Command::new("pwsh")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(command)
+            .current_dir(working_dir)
+            .output()
+            .await
+    } else {
+        tokio::process::Command::new("bash")
+            .arg("-c")
+            .arg(command)
+            .current_dir(working_dir)
+            .output()
+            .await
     }
 }
