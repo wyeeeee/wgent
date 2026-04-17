@@ -1,4 +1,5 @@
 use std::io::{self, Write};
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -17,14 +18,14 @@ impl TerminalTransport {
     }
 
     /// 终端 UI 主循环
-    pub async fn run(&self, agent: Arc<Agent>, session_id: &str) -> Result<()> {
+    pub async fn run(&self, agent: Arc<Agent>, session_id: &str, working_dir: &Path) -> Result<()> {
         loop {
             let input = self.read_input().await?;
             if input.trim().is_empty() {
                 continue;
             }
 
-            let mut rx = agent.chat(session_id, &input).await?;
+            let mut rx = agent.chat(session_id, &input, working_dir).await?;
             while let Some(event) = rx.recv().await {
                 self.send_event(event).await?;
             }

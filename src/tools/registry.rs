@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use anyhow::{anyhow, Result};
 use serde_json::Value;
@@ -28,12 +29,12 @@ impl ToolRegistry {
         self.tools.get(name).map(|t| t.as_ref())
     }
 
-    pub async fn execute(&self, name: &str, input: Value) -> Result<String> {
+    pub async fn execute(&self, name: &str, input: Value, working_dir: &Path) -> Result<String> {
         let tool = self
             .tools
             .get(name)
             .ok_or_else(|| anyhow!("tool not found: {name}"))?;
-        tool.execute(input).await
+        tool.execute(input, working_dir).await
     }
 
     /// 转换为 LLM 可识别的工具定义列表

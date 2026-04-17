@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use anyhow::Result;
 use tera::{Context, Tera};
 
@@ -27,11 +29,13 @@ impl PromptManager {
         agent_name: &str,
         role: Option<&str>,
         guidelines: &[String],
+        working_dir: &Path,
     ) -> Result<String> {
         let mut ctx = Context::new();
         ctx.insert("agent_name", agent_name);
         ctx.insert("role", &role);
         ctx.insert("guidelines", guidelines);
+        ctx.insert("working_dir", &working_dir.to_string_lossy().to_string());
         self.render("system", &ctx)
     }
 

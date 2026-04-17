@@ -16,6 +16,7 @@ use core::Agent;
 use llm::AnthropicProvider;
 use prompt::PromptManager;
 use term::TerminalTransport;
+use tools::builtin::{BashTool, EditTool, ReadTool, WriteTool};
 use tools::ToolRegistry;
 
 #[tokio::main]
@@ -38,19 +39,27 @@ async fn main() -> Result<()> {
     let data_dir = std::env::var("AGENT_DATA_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("data/sessions"));
+    let working_dir = std::env::var("AGENT_WORKING_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     let llm = Arc::new(AnthropicProvider::with_base_url(api_key, model, base_url));
     let prompts = Arc::new(PromptManager::new()?);
-    let tools = ToolRegistry::new();
 
-    info!("Agent initialized, model={}", llm.model_name());
+    let mut tools = ToolRegistry::new();
+    tools.register(Box::new(ReadTool));
+    tools.register(Box::new(WriteTool));
+    tools.register(Box::new(EditTool));
+    tools.register(Box::new(BashTool));
+
+    info!("Agent initialized, model={}, working_dir={}", llm.model_name(), working_dir.display());
 
     let agent = Arc::new(Agent::new(llm, tools, prompts, data_dir));
     let session_id = generate_session_id();
     info!("session: {session_id}");
 
     let transport = TerminalTransport::new();
-    transport.run(agent, &session_id).await
+    transport.run(agent, &session_id, &working_dir).await
 }
 
 fn generate_session_id() -> String {

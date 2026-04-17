@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -38,15 +38,16 @@ impl Agent {
         }
     }
 
-    /// 核心 SDK 接口：接收 session_id 和用户消息，返回事件流
+    /// 核心 SDK 接口：接收 session_id、working_dir 和用户消息，返回事件流
     pub async fn chat(
         &self,
         session_id: &str,
         user_message: &str,
+        working_dir: &Path,
     ) -> Result<Receiver<AgentEvent>> {
         let (tx, rx) = tokio::sync::mpsc::channel(32);
 
-        let mut session = self.sessions.get_or_create(session_id).await?;
+        let mut session = self.sessions.get_or_create(session_id, working_dir.to_path_buf()).await?;
         session.add_message(Message::user(user_message));
 
         let llm = self.llm.clone();
@@ -98,9 +99,10 @@ impl Agent {
                                         })
                                         .await;
 
+                                    let working_dir = session.working_dir.clone();
                                     let result = {
                                         let guard = tools.read().await;
-                                        guard.execute(name, input.clone()).await
+                                        guard.execute(name, input.clone(), &working_dir).await
                                     };
 
                                     let output = match result {
@@ -172,7 +174,7 @@ async fn build_request(
     prompts: &PromptManager,
     tools: &RwLock<ToolRegistry>,
 ) -> Result<ChatRequest> {
-    let system = prompts.render_system("Agent", None::<&str>, &[])?;
+    let system = prompts.render_system("Agent", None::<&str>, &[], &session.working_dir)?;
     let tool_defs = tools.read().await.definitions();
 
     let messages = session

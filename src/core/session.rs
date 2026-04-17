@@ -14,16 +14,18 @@ const MAX_HISTORY: usize = 100;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: String,
+    pub working_dir: PathBuf,
     pub created_at: i64,
     pub updated_at: i64,
     pub messages: Vec<Message>,
 }
 
 impl Session {
-    pub fn new(id: String) -> Self {
+    pub fn new(id: String, working_dir: PathBuf) -> Self {
         let now = now_ts();
         Self {
             id,
+            working_dir,
             created_at: now,
             updated_at: now,
             messages: Vec::new(),
@@ -75,7 +77,7 @@ impl SessionManager {
     }
 
     /// 获取或创建 session（先查缓存，再查文件，最后新建）
-    pub async fn get_or_create(&self, id: &str) -> Result<Session> {
+    pub async fn get_or_create(&self, id: &str, working_dir: PathBuf) -> Result<Session> {
         {
             let cache = self.inner.cache.read().await;
             if let Some(session) = cache.get(id) {
@@ -99,7 +101,7 @@ impl SessionManager {
             }
         }
 
-        let session = Session::new(id.to_string());
+        let session = Session::new(id.to_string(), working_dir);
         let mut cache = self.inner.cache.write().await;
         cache.insert(id.to_string(), session.clone());
         debug!("session created: {id}");
