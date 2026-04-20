@@ -8,10 +8,13 @@ pub struct Config {
 
 #[derive(Clone, Debug)]
 pub struct ConfigValues {
-    pub command_timeout: u64,
-    pub max_iterations: usize,
+    pub api_key: String,
+    pub model: String,
+    pub base_url: String,
     pub max_tokens: u32,
     pub thinking_budget: u32,
+    pub command_timeout: u64,
+    pub max_iterations: usize,
 }
 
 impl Config {
@@ -36,11 +39,16 @@ impl Config {
 impl ConfigValues {
     /// 从环境变量加载，缺失项使用默认值
     pub fn from_env() -> Self {
+        let api_key = std::env::var("ANTHROPIC_API_KEY")
+            .expect("请设置 ANTHROPIC_API_KEY 环境变量");
         Self {
-            command_timeout: parse_env("AGENT_COMMAND_TIMEOUT", 60),
-            max_iterations: parse_env("AGENT_MAX_ITERATIONS", 50),
+            api_key,
+            model: parse_env("ANTHROPIC_MODEL", "claude-sonnet-4-20250514".to_string()),
+            base_url: parse_env("ANTHROPIC_BASE_URL", "https://api.anthropic.com".to_string()),
             max_tokens: parse_env("AGENT_MAX_TOKENS", 8096),
             thinking_budget: parse_env("AGENT_THINKING_BUDGET", 0),
+            command_timeout: parse_env("AGENT_COMMAND_TIMEOUT", 60),
+            max_iterations: parse_env("AGENT_MAX_ITERATIONS", 50),
         }
     }
 }

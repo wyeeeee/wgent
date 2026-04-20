@@ -12,26 +12,19 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 pub struct AnthropicProvider {
     client: Client,
-    api_key: String,
-    base_url: String,
-    model: String,
     config: Config,
 }
 
 impl AnthropicProvider {
-    pub fn with_base_url(api_key: String, model: String, base_url: String, config: Config) -> Self {
-        let base_url = base_url.trim_end_matches('/').to_string();
+    pub fn new(config: Config) -> Self {
         Self {
             client: Client::new(),
-            api_key,
-            base_url,
-            model,
             config,
         }
     }
 
-    pub fn model_name(&self) -> &str {
-        &self.model
+    pub fn model_name(&self) -> String {
+        self.config.get().model
     }
 }
 
@@ -39,7 +32,7 @@ impl AnthropicProvider {
 impl LlmProvider for AnthropicProvider {
     async fn chat(&self, mut request: ChatRequest) -> Result<ChatResponse> {
         let cfg = self.config.get();
-        request.model = self.model.clone();
+        request.model = cfg.model.clone();
         if request.max_tokens == 0 {
             request.max_tokens = cfg.max_tokens;
         }
@@ -52,8 +45,8 @@ impl LlmProvider for AnthropicProvider {
 
         let resp = self
             .client
-            .post(format!("{}/v1/messages", self.base_url))
-            .header("x-api-key", &self.api_key)
+            .post(format!("{}/v1/messages", cfg.base_url.trim_end_matches('/')))
+            .header("x-api-key", &cfg.api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
             .json(&body)

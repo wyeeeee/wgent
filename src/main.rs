@@ -32,12 +32,7 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .expect("请设置 ANTHROPIC_API_KEY 环境变量");
-    let model = std::env::var("ANTHROPIC_MODEL")
-        .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string());
-    let base_url = std::env::var("ANTHROPIC_BASE_URL")
-        .unwrap_or_else(|_| "https://api.anthropic.com".to_string());
+    let config = Config::new(ConfigValues::from_env());
     let data_dir = std::env::var("AGENT_DATA_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("data/sessions"));
@@ -45,9 +40,7 @@ async fn main() -> Result<()> {
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
-    let config = Config::new(ConfigValues::from_env());
-
-    let llm = Arc::new(AnthropicProvider::with_base_url(api_key, model, base_url, config.clone()));
+    let llm = Arc::new(AnthropicProvider::new(config.clone()));
     let prompts = Arc::new(PromptManager::new()?);
 
     let mut tools = ToolRegistry::new();
