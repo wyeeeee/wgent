@@ -41,6 +41,10 @@ impl TerminalTransport {
                     let ctx = CommandContext {
                         session_manager: agent.session_manager(),
                         working_dir: working_dir.to_path_buf(),
+                        command_list: self.commands.list()
+                            .into_iter()
+                            .map(|(n, d)| (n.to_string(), d.to_string()))
+                            .collect(),
                     };
 
                     match self.commands.execute(cmd_name, &ctx, args).await {

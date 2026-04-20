@@ -11,6 +11,7 @@ use crate::core::session::SessionManager;
 pub struct CommandContext {
     pub session_manager: SessionManager,
     pub working_dir: PathBuf,
+    pub command_list: Vec<(String, String)>,
 }
 
 /// 结构化返回

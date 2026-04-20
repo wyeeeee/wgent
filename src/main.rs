@@ -15,7 +15,7 @@ use anyhow::Result;
 use tracing::info;
 
 use commands::CommandRegistry;
-use commands::builtin::NewCommand;
+use commands::builtin::{HelpCommand, NewCommand};
 use config::{Config, ConfigValues};
 use core::Agent;
 use llm::AnthropicProvider;
@@ -54,6 +54,7 @@ async fn main() -> Result<()> {
 
     let mut commands = CommandRegistry::new();
     commands.register(Box::new(NewCommand));
+    commands.register(Box::new(HelpCommand));
 
     info!("Agent initialized, model={}, working_dir={}", llm.model_name(), working_dir.display());
 
