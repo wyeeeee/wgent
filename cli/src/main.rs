@@ -139,7 +139,13 @@ async fn main() -> anyhow::Result<()> {
     let config = wgent::config::Config::new(wgent::config::ConfigValues::from_env());
     let data_dir = std::env::var("AGENT_DATA_DIR")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::path::PathBuf::from("data/sessions"));
+        .unwrap_or_else(|_| {
+            let home = std::env::var("USERPROFILE")
+                .or_else(|_| std::env::var("HOME"))
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            home.join(".wgent").join("sessions")
+        });
     let working_dir = std::env::var("AGENT_WORKING_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
