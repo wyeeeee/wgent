@@ -9,8 +9,6 @@ use tracing::{debug, warn};
 
 use crate::core::message::Message;
 
-const MAX_HISTORY: usize = 100;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: String,
@@ -35,14 +33,6 @@ impl Session {
     pub fn add_message(&mut self, message: Message) {
         self.updated_at = now_ts();
         self.messages.push(message);
-        self.trim();
-    }
-
-    fn trim(&mut self) {
-        if self.messages.len() > MAX_HISTORY {
-            let drain = self.messages.len() - MAX_HISTORY;
-            self.messages.drain(0..drain);
-        }
     }
 }
 

@@ -18,14 +18,14 @@ pub struct AnthropicProvider {
 }
 
 impl AnthropicProvider {
-    pub fn with_base_url(api_key: String, model: String, base_url: String) -> Self {
+    pub fn with_base_url(api_key: String, model: String, base_url: String, max_tokens: u32) -> Self {
         let base_url = base_url.trim_end_matches('/').to_string();
         Self {
             client: Client::new(),
             api_key,
             base_url,
             model,
-            max_tokens: 4096,
+            max_tokens,
         }
     }
 

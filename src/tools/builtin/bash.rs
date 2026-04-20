@@ -7,10 +7,15 @@ use serde_json::{json, Value};
 
 use crate::tools::tool::Tool;
 
-const TIMEOUT_SECS: u64 = 60;
-const MAX_OUTPUT_LEN: usize = 10000;
+pub struct BashTool {
+    timeout_secs: u64,
+}
 
-pub struct BashTool;
+impl BashTool {
+    pub fn new(timeout_secs: u64) -> Self {
+        Self { timeout_secs }
+    }
+}
 
 #[async_trait]
 impl Tool for BashTool {
@@ -19,7 +24,7 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &str {
-        "在系统 shell 中执行命令（Windows: pwsh, Unix: bash），工作目录为当前会话的工作目录。超时 60 秒。"
+        "在系统 shell 中执行命令（Windows: pwsh, Unix: bash），工作目录为当前会话的工作目录。有超时限制。"
     }
 
     fn input_schema(&self) -> Value {
@@ -45,11 +50,11 @@ impl Tool for BashTool {
         }
 
         let output = tokio::time::timeout(
-            Duration::from_secs(TIMEOUT_SECS),
+            Duration::from_secs(self.timeout_secs),
             shell_command(command, working_dir),
         )
         .await
-        .map_err(|_| anyhow!("命令执行超时（{}秒）", TIMEOUT_SECS))?
+        .map_err(|_| anyhow!("命令执行超时（{}秒）", self.timeout_secs))?
         .map_err(|e| anyhow!("启动命令失败: {e}"))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -59,31 +64,19 @@ impl Tool for BashTool {
         let mut result = String::new();
 
         if !stdout.is_empty() {
-            result.push_str(&truncate(&stdout, MAX_OUTPUT_LEN));
+            result.push_str(&stdout);
         }
         if !stderr.is_empty() {
             if !result.is_empty() {
                 result.push_str("\n");
             }
-            result.push_str(&format!("[stderr]\n{}", truncate(&stderr, MAX_OUTPUT_LEN)));
+            result.push_str(&format!("[stderr]\n{stderr}"));
         }
         if exit_code != 0 {
             result.push_str(&format!("\n[退出码: {exit_code}]"));
         }
 
         Ok(result)
-    }
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        let mut end = max;
-        while end > 0 && !s.is_char_boundary(end) {
-            end -= 1;
-        }
-        format!("{}...\n[输出被截断，共 {} 字符]", &s[..end], s.len())
     }
 }
 

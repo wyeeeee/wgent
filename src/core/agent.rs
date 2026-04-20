@@ -14,13 +14,12 @@ use crate::prompt::PromptManager;
 use crate::tools::ToolRegistry;
 use crate::transport::AgentEvent;
 
-const MAX_LOOP_ITERATIONS: usize = 50;
-
 pub struct Agent {
     llm: Arc<dyn LlmProvider>,
     tools: Arc<RwLock<ToolRegistry>>,
     prompts: Arc<PromptManager>,
     sessions: SessionManager,
+    max_iterations: usize,
 }
 
 impl Agent {
@@ -29,12 +28,14 @@ impl Agent {
         tools: ToolRegistry,
         prompts: Arc<PromptManager>,
         data_dir: PathBuf,
+        max_iterations: usize,
     ) -> Self {
         Self {
             llm,
             tools: Arc::new(RwLock::new(tools)),
             prompts,
             sessions: SessionManager::new(data_dir),
+            max_iterations,
         }
     }
 
@@ -46,6 +47,7 @@ impl Agent {
         working_dir: &Path,
     ) -> Result<Receiver<AgentEvent>> {
         let (tx, rx) = tokio::sync::mpsc::channel(32);
+        let max_iterations = self.max_iterations;
 
         let mut session = self.sessions.get_or_create(session_id, working_dir.to_path_buf()).await?;
         session.add_message(Message::user(user_message));
@@ -60,7 +62,7 @@ impl Agent {
 
             loop {
                 iterations += 1;
-                if iterations > MAX_LOOP_ITERATIONS {
+                if iterations > max_iterations {
                     let _ = tx.send(AgentEvent::Error("超过最大循环次数".into())).await;
                     break;
                 }

@@ -60,16 +60,11 @@ impl Transport for TerminalTransport {
                 println!("  {} {}: {}", "⟳".yellow(), format!("{name}").yellow(), input_preview.dimmed());
             }
             AgentEvent::ToolCallEnd { name, result, .. } => {
-                let preview = if result.len() > 200 {
-                    format!("{}...", safe_truncate(&result, 200))
-                } else {
-                    result.clone()
-                };
-                debug!("Tool '{name}' result: {preview}");
+                debug!("Tool '{name}' result: {result}");
                 println!(
                     "  {} {}",
                     "✓".green(),
-                    format!("{name}: {preview}").dimmed()
+                    format!("{name}: {result}").dimmed()
                 );
             }
             AgentEvent::Error(msg) => {
@@ -81,16 +76,4 @@ impl Transport for TerminalTransport {
         }
         Ok(())
     }
-}
-
-/// 按字节截断到最近的 UTF-8 字符边界
-fn safe_truncate(s: &str, max: usize) -> &str {
-    if s.len() <= max {
-        return s;
-    }
-    let mut end = max;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
 }

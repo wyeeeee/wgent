@@ -42,19 +42,25 @@ async fn main() -> Result<()> {
     let working_dir = std::env::var("AGENT_WORKING_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let command_timeout: u64 = std::env::var("AGENT_COMMAND_TIMEOUT")
+        .ok().and_then(|v| v.parse().ok()).unwrap_or(60);
+    let max_iterations: usize = std::env::var("AGENT_MAX_ITERATIONS")
+        .ok().and_then(|v| v.parse().ok()).unwrap_or(50);
+    let max_tokens: u32 = std::env::var("AGENT_MAX_TOKENS")
+        .ok().and_then(|v| v.parse().ok()).unwrap_or(8096);
 
-    let llm = Arc::new(AnthropicProvider::with_base_url(api_key, model, base_url));
+    let llm = Arc::new(AnthropicProvider::with_base_url(api_key, model, base_url, max_tokens));
     let prompts = Arc::new(PromptManager::new()?);
 
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(ReadTool));
     tools.register(Box::new(WriteTool));
     tools.register(Box::new(EditTool));
-    tools.register(Box::new(BashTool));
+    tools.register(Box::new(BashTool::new(command_timeout)));
 
     info!("Agent initialized, model={}, working_dir={}", llm.model_name(), working_dir.display());
 
-    let agent = Arc::new(Agent::new(llm, tools, prompts, data_dir));
+    let agent = Arc::new(Agent::new(llm, tools, prompts, data_dir, max_iterations));
     let session_id = generate_session_id();
     info!("session: {session_id}");
 

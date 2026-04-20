@@ -116,19 +116,8 @@ impl Tool for EditTool {
             start_line,
             end_line,
             new_line_count,
-            if old_lines.len() > 500 { format!("{}...(截断)", safe_slice(&old_lines, 500)) } else { old_lines },
-            if new_content.len() > 500 { format!("{}...(截断)", safe_slice(&new_content, 500)) } else { new_content },
+            old_lines,
+            new_content,
         ))
     }
-}
-
-fn safe_slice(s: &str, max: usize) -> &str {
-    if s.len() <= max {
-        return s;
-    }
-    let mut end = max;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
 }
