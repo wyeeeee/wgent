@@ -2,6 +2,8 @@
 
 ## 当前环境
 - 工作目录: {{ working_dir }}
+- 操作系统: {{ os_name }}
+- Shell: {{ shell_name }}
 
 {% if role %}
 ## 角色定义

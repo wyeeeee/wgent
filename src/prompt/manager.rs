@@ -36,6 +36,8 @@ impl PromptManager {
         ctx.insert("role", &role);
         ctx.insert("guidelines", guidelines);
         ctx.insert("working_dir", &working_dir.to_string_lossy().to_string());
+        ctx.insert("os_name", &format!("{} ({})", std::env::consts::OS, std::env::consts::FAMILY));
+        ctx.insert("shell_name", if cfg!(windows) { "PowerShell (pwsh)" } else { "Bash" });
         self.render("system", &ctx)
     }
 
