@@ -97,7 +97,7 @@ impl Agent {
         let sessions = self.sessions.clone();
 
         tokio::spawn(async move {
-            run_loop(&llm, &tools, &prompts, &config, &mut session, &tx).await;
+            run_loop(llm, tools, prompts, config, &mut session, &tx).await;
             let _ = tx.send(AgentEvent::Done).await;
             let _ = sessions.save(&session).await;
         });
@@ -107,10 +107,10 @@ impl Agent {
 }
 
 async fn run_loop(
-    llm: &Arc<dyn LlmProvider>,
-    tools: &Arc<RwLock<ToolRegistry>>,
-    prompts: &PromptManager,
-    config: &Config,
+    llm: Arc<dyn LlmProvider>,
+    tools: Arc<RwLock<ToolRegistry>>,
+    prompts: Arc<PromptManager>,
+    config: Config,
     session: &mut crate::core::session::Session,
     tx: &Sender<AgentEvent>,
 ) {
@@ -124,7 +124,7 @@ async fn run_loop(
             return;
         }
 
-        let request = match build_request(session, prompts, tools, &cfg).await {
+        let request = match build_request(session, &prompts, &tools, &cfg).await {
             Ok(r) => r,
             Err(e) => {
                 let _ = tx.send(AgentEvent::Error(format!("构建请求失败: {e}"))).await;
@@ -141,23 +141,36 @@ async fn run_loop(
             }
         };
 
-        if !process_response(response, session, tools, prompts, tx).await {
+        if !process_response(response, session, &tools, &prompts, tx).await {
             return;
         }
     }
+}
+
+struct ToolCall {
+    id: String,
+    name: String,
+    input: serde_json::Value,
+}
+
+struct ToolCallResult {
+    id: String,
+    name: String,
+    arguments: serde_json::Value,
+    output: String,
 }
 
 async fn process_response(
     response: ChatResponse,
     session: &mut crate::core::session::Session,
     tools: &Arc<RwLock<ToolRegistry>>,
-    prompts: &PromptManager,
+    prompts: &Arc<PromptManager>,
     tx: &Sender<AgentEvent>,
 ) -> bool {
-    let mut has_tool_calls = false;
-    let mut assistant_content = Vec::new();
-    let mut tool_results = Vec::new();
+    let mut assistant_content: Vec<MessageContent> = Vec::new();
+    let mut tool_calls: Vec<ToolCall> = Vec::new();
 
+    // 阶段 1: 处理文本/思考块，收集工具调用
     for block in &response.content {
         match block {
             ContentBlock::Thinking { text } => {
@@ -169,21 +182,89 @@ async fn process_response(
                 assistant_content.push(MessageContent::Text { text: text.clone() });
             }
             ContentBlock::ToolUse { id, name, input } => {
-                has_tool_calls = true;
-                let output = execute_tool(id, name, input, &session.working_dir, tools, prompts, tx).await;
+                let input_preview = tool_input_preview(name, input);
+                let _ = tx
+                    .send(AgentEvent::ToolCallStart {
+                        id: id.clone(),
+                        name: name.clone(),
+                        input_preview,
+                    })
+                    .await;
 
-                assistant_content.push(MessageContent::ToolCall {
+                tool_calls.push(ToolCall {
                     id: id.clone(),
                     name: name.clone(),
-                    arguments: input.clone(),
-                });
-                tool_results.push(MessageContent::ToolResult {
-                    tool_use_id: id.clone(),
-                    output,
+                    input: input.clone(),
                 });
             }
             ContentBlock::ToolResult { .. } => {}
         }
+    }
+
+    // 阶段 2: 并行执行所有工具调用
+    let tool_results = if tool_calls.is_empty() {
+        Vec::new()
+    } else {
+        let mut handles = Vec::with_capacity(tool_calls.len());
+
+        for tc in tool_calls {
+            let tools = tools.clone();
+            let prompts = prompts.clone();
+            let tx = tx.clone();
+            let working_dir = session.working_dir.clone();
+
+            handles.push(tokio::spawn(async move {
+                let result = {
+                    let guard = tools.read().await;
+                    guard.execute(&tc.name, tc.input.clone(), &working_dir).await
+                };
+
+                let output = match result {
+                    Ok(o) => o,
+                    Err(e) => {
+                        warn!("Tool '{}' failed: {e}", tc.name);
+                        prompts
+                            .render_tool_error(&tc.name, &e.to_string())
+                            .unwrap_or_else(|_| e.to_string())
+                    }
+                };
+
+                let _ = tx
+                    .send(AgentEvent::ToolCallEnd {
+                        id: tc.id.clone(),
+                        name: tc.name.clone(),
+                        result: output.clone(),
+                    })
+                    .await;
+
+                ToolCallResult {
+                    id: tc.id,
+                    name: tc.name,
+                    arguments: tc.input,
+                    output,
+                }
+            }));
+        }
+
+        let mut results = Vec::with_capacity(handles.len());
+        for handle in handles {
+            match handle.await {
+                Ok(r) => results.push(r),
+                Err(e) => {
+                    error!("Tool task panicked: {e}");
+                }
+            }
+        }
+        results
+    };
+
+    // 阶段 3: 写入 session
+    for r in &tool_results {
+        assistant_content.push(MessageContent::ToolCall {
+            id: r.id.clone(),
+            name: r.name.clone(),
+            arguments: r.arguments.clone(),
+        });
     }
 
     session.add_message(Message {
@@ -191,58 +272,21 @@ async fn process_response(
         content: assistant_content,
     });
 
+    let has_tool_calls = !tool_results.is_empty();
     if has_tool_calls {
         session.add_message(Message {
             role: Role::User,
-            content: tool_results,
+            content: tool_results
+                .into_iter()
+                .map(|r| MessageContent::ToolResult {
+                    tool_use_id: r.id,
+                    output: r.output,
+                })
+                .collect(),
         });
     }
 
     has_tool_calls
-}
-
-async fn execute_tool(
-    id: &str,
-    name: &str,
-    input: &serde_json::Value,
-    working_dir: &Path,
-    tools: &Arc<RwLock<ToolRegistry>>,
-    prompts: &PromptManager,
-    tx: &Sender<AgentEvent>,
-) -> String {
-    let input_preview = tool_input_preview(name, input);
-    let _ = tx
-        .send(AgentEvent::ToolCallStart {
-            id: id.to_string(),
-            name: name.to_string(),
-            input_preview,
-        })
-        .await;
-
-    let result = {
-        let guard = tools.read().await;
-        guard.execute(name, input.clone(), working_dir).await
-    };
-
-    let output = match result {
-        Ok(o) => o,
-        Err(e) => {
-            warn!("Tool '{name}' failed: {e}");
-            prompts
-                .render_tool_error(name, &e.to_string())
-                .unwrap_or_else(|_| e.to_string())
-        }
-    };
-
-    let _ = tx
-        .send(AgentEvent::ToolCallEnd {
-            id: id.to_string(),
-            name: name.to_string(),
-            result: output.clone(),
-        })
-        .await;
-
-    output
 }
 
 async fn build_request(
