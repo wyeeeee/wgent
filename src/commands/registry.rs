@@ -4,7 +4,6 @@ use anyhow::{anyhow, Result};
 
 use crate::commands::command::{Command, CommandContext, CommandResult};
 
-/// 命令注册表
 pub struct CommandRegistry {
     commands: HashMap<String, Box<dyn Command>>,
 }
@@ -14,6 +13,21 @@ impl CommandRegistry {
         Self {
             commands: HashMap::new(),
         }
+    }
+
+    pub fn from_config(spec: &str) -> Self {
+        let mut registry = Self::new();
+        let names = parse_spec(spec);
+        let want_all = names.contains(&"all");
+
+        if want_all || names.contains(&"new") {
+            registry.register(Box::new(crate::commands::builtin::NewCommand));
+        }
+        if want_all || names.contains(&"help") {
+            registry.register(Box::new(crate::commands::builtin::HelpCommand));
+        }
+
+        registry
     }
 
     pub fn register(&mut self, cmd: Box<dyn Command>) {
@@ -37,7 +51,6 @@ impl CommandRegistry {
         cmd.execute(ctx, args).await
     }
 
-    #[allow(dead_code)]
     pub fn list(&self) -> Vec<(&str, &str)> {
         let mut list: Vec<_> = self
             .commands
@@ -47,4 +60,11 @@ impl CommandRegistry {
         list.sort_by_key(|(name, _)| *name);
         list
     }
+}
+
+fn parse_spec(spec: &str) -> Vec<&str> {
+    spec.split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect()
 }

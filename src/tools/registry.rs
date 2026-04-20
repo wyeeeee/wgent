@@ -4,10 +4,10 @@ use std::path::Path;
 use anyhow::{anyhow, Result};
 use serde_json::Value;
 
+use crate::config::Config;
 use crate::llm::ToolDefinition;
 use crate::tools::tool::Tool;
 
-/// 工具注册表
 pub struct ToolRegistry {
     tools: HashMap<String, Box<dyn Tool>>,
 }
@@ -19,7 +19,27 @@ impl ToolRegistry {
         }
     }
 
-    #[allow(dead_code)]
+    pub fn from_config(config: &Config, spec: &str) -> Self {
+        let mut registry = Self::new();
+        let names = parse_spec(spec);
+        let want_all = names.contains(&"all");
+
+        if want_all || names.contains(&"bash") {
+            registry.register(Box::new(crate::tools::builtin::BashTool::new(config.clone())));
+        }
+        if want_all || names.contains(&"read") {
+            registry.register(Box::new(crate::tools::builtin::ReadTool));
+        }
+        if want_all || names.contains(&"write") {
+            registry.register(Box::new(crate::tools::builtin::WriteTool));
+        }
+        if want_all || names.contains(&"edit") {
+            registry.register(Box::new(crate::tools::builtin::EditTool));
+        }
+
+        registry
+    }
+
     pub fn register(&mut self, tool: Box<dyn Tool>) {
         self.tools.insert(tool.name().to_string(), tool);
     }
@@ -37,7 +57,6 @@ impl ToolRegistry {
         tool.execute(input, working_dir).await
     }
 
-    /// 转换为 LLM 可识别的工具定义列表
     pub fn definitions(&self) -> Vec<ToolDefinition> {
         self.tools
             .values()
@@ -53,4 +72,11 @@ impl ToolRegistry {
     pub fn is_empty(&self) -> bool {
         self.tools.is_empty()
     }
+}
+
+fn parse_spec(spec: &str) -> Vec<&str> {
+    spec.split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect()
 }

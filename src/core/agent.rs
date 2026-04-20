@@ -1,11 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use tokio::sync::RwLock;
 use tokio::sync::mpsc::Receiver;
 use tracing::{error, warn};
 
+use crate::commands::CommandRegistry;
 use crate::config::Config;
 use crate::core::message::{Message, MessageContent};
 use crate::core::session::SessionManager;
@@ -19,39 +20,62 @@ use crate::utils::tool_input_preview;
 pub struct Agent {
     llm: Arc<dyn LlmProvider>,
     tools: Arc<RwLock<ToolRegistry>>,
+    commands: Arc<RwLock<CommandRegistry>>,
     prompts: Arc<PromptManager>,
     sessions: SessionManager,
     config: Config,
+    working_dir: PathBuf,
 }
 
 impl Agent {
-    pub fn new(
-        llm: Arc<dyn LlmProvider>,
-        tools: ToolRegistry,
-        prompts: Arc<PromptManager>,
-        data_dir: PathBuf,
-        config: Config,
-    ) -> Self {
-        Self {
+    pub fn new(dir: &Path, working_dir: &Path) -> Result<Self> {
+        let config = Config::load(dir)?;
+        let cfg = config.get();
+
+        if cfg.api_key.is_empty() {
+            bail!(
+                "API key 未设置，请编辑 {}/wgent.json",
+                dir.display()
+            );
+        }
+
+        let llm = Arc::new(crate::llm::AnthropicProvider::new(config.clone()));
+        let prompts = Arc::new(PromptManager::new()?);
+        let tools = ToolRegistry::from_config(&config, &cfg.tools);
+        let commands = CommandRegistry::from_config(&cfg.commands);
+        let sessions = SessionManager::new(dir.join("sessions"));
+
+        Ok(Self {
             llm,
             tools: Arc::new(RwLock::new(tools)),
+            commands: Arc::new(RwLock::new(commands)),
             prompts,
-            sessions: SessionManager::new(data_dir),
+            sessions,
             config,
-        }
+            working_dir: working_dir.to_path_buf(),
+        })
     }
 
     pub fn session_manager(&self) -> SessionManager {
         self.sessions.clone()
     }
 
-    /// 核心 SDK 接口：传入 session_id 则接续会话，None 则自动创建新会话
-    /// 返回 (实际 session_id, 事件流)
+    pub fn commands(&self) -> Arc<RwLock<CommandRegistry>> {
+        self.commands.clone()
+    }
+
+    pub fn working_dir(&self) -> &Path {
+        &self.working_dir
+    }
+
+    pub fn model_name(&self) -> String {
+        self.config.get().model
+    }
+
     pub async fn chat(
         &self,
         session_id: Option<&str>,
         user_message: &str,
-        working_dir: &Path,
     ) -> Result<(String, Receiver<AgentEvent>)> {
         let (tx, rx) = tokio::sync::mpsc::channel(32);
         let config = self.config.clone();
@@ -61,7 +85,10 @@ impl Agent {
             None => self.sessions.generate_id(),
         };
 
-        let mut session = self.sessions.get_or_create(&sid, working_dir.to_path_buf()).await?;
+        let mut session = self
+            .sessions
+            .get_or_create(&sid, self.working_dir.to_path_buf())
+            .await?;
         session.add_message(Message::user(user_message));
 
         let llm = self.llm.clone();

@@ -1,12 +1,15 @@
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-/// 热加载配置：运行时可通过 update() 修改，各组件下次读取即生效
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+
 #[derive(Clone)]
 pub struct Config {
     inner: Arc<RwLock<ConfigValues>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConfigValues {
     pub api_key: String,
     pub model: String,
@@ -15,6 +18,24 @@ pub struct ConfigValues {
     pub thinking_budget: u32,
     pub command_timeout: u64,
     pub max_iterations: usize,
+    pub tools: String,
+    pub commands: String,
+}
+
+impl Default for ConfigValues {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            model: "claude-sonnet-4-20250514".into(),
+            base_url: "https://api.anthropic.com".into(),
+            max_tokens: 8096,
+            thinking_budget: 0,
+            command_timeout: 60,
+            max_iterations: 50,
+            tools: "all".into(),
+            commands: "all".into(),
+        }
+    }
 }
 
 impl Config {
@@ -24,38 +45,38 @@ impl Config {
         }
     }
 
-    /// 获取当前配置快照
     pub fn get(&self) -> ConfigValues {
         self.inner.read().unwrap().clone()
     }
 
-    /// 热更新配置
     #[allow(dead_code)]
     pub fn update(&self, values: ConfigValues) {
         *self.inner.write().unwrap() = values;
     }
-}
 
-impl ConfigValues {
-    /// 从环境变量加载，缺失项使用默认值
-    pub fn from_env() -> Self {
-        let api_key = std::env::var("ANTHROPIC_API_KEY")
-            .expect("请设置 ANTHROPIC_API_KEY 环境变量");
-        Self {
-            api_key,
-            model: parse_env("ANTHROPIC_MODEL", "claude-sonnet-4-20250514".to_string()),
-            base_url: parse_env("ANTHROPIC_BASE_URL", "https://api.anthropic.com".to_string()),
-            max_tokens: parse_env("AGENT_MAX_TOKENS", 8096),
-            thinking_budget: parse_env("AGENT_THINKING_BUDGET", 0),
-            command_timeout: parse_env("AGENT_COMMAND_TIMEOUT", 60),
-            max_iterations: parse_env("AGENT_MAX_ITERATIONS", 50),
-        }
+    pub fn load(dir: &Path) -> Result<Self> {
+        std::fs::create_dir_all(dir)?;
+        std::fs::create_dir_all(dir.join("sessions"))?;
+
+        let config_path = dir.join("wgent.json");
+        let values = if config_path.exists() {
+            let raw = std::fs::read_to_string(&config_path)?;
+            serde_json::from_str::<ConfigValues>(&raw)?
+        } else {
+            let defaults = ConfigValues::default();
+            let json = serde_json::to_string_pretty(&defaults)?;
+            std::fs::write(&config_path, json)?;
+            defaults
+        };
+
+        Ok(Self::new(values))
     }
-}
 
-fn parse_env<T: std::str::FromStr>(key: &str, default: T) -> T {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+    pub fn default_dir() -> PathBuf {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."));
+        home.join(".wgent")
+    }
 }
