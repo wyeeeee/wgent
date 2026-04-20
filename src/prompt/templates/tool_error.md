@@ -1,3 +1,8 @@
+{#
+  可用变量:
+  - tool_name : &str — 工具名称
+  - error     : &str — 错误信息
+#}
 工具 `{{ tool_name }}` 执行失败，错误信息如下：
 
 {{ error }}

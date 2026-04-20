@@ -3,9 +3,9 @@ use std::path::Path;
 use anyhow::Result;
 use tera::{Context, Tera};
 
-const SYSTEM_TEMPLATE: &str = include_str!("templates/system.tera");
-const TOOL_ERROR_TEMPLATE: &str = include_str!("templates/tool_error.tera");
-const TOOL_RESULT_TEMPLATE: &str = include_str!("templates/tool_result.tera");
+const SYSTEM_TEMPLATE: &str = include_str!("templates/system.md");
+const TOOL_ERROR_TEMPLATE: &str = include_str!("templates/tool_error.md");
+const TOOL_RESULT_TEMPLATE: &str = include_str!("templates/tool_result.md");
 
 pub struct PromptManager {
     tera: Tera,

@@ -1,3 +1,12 @@
+{#
+  可用变量:
+  - agent_name  : str          — 助手名称
+  - working_dir : str          — 当前工作目录
+  - os_name     : str          — 操作系统 (如 "windows (windows)")
+  - shell_name  : str          — Shell 类型 (如 "PowerShell (pwsh)" / "Bash")
+  - role        : Option<str>  — 可选角色定义
+  - guidelines  : Vec<String>  — 可选行为准则列表
+#}
 你是一个名为 {{ agent_name }} 的智能助手。
 
 ## 当前环境
