@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{Result, bail};
 use tokio::sync::RwLock;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{error, warn};
 
 use crate::commands::CommandRegistry;
@@ -78,7 +78,6 @@ impl Agent {
         user_message: &str,
     ) -> Result<(String, Receiver<AgentEvent>)> {
         let (tx, rx) = tokio::sync::mpsc::channel(32);
-        let config = self.config.clone();
 
         let sid = match session_id {
             Some(id) => id.to_string(),
@@ -94,130 +93,156 @@ impl Agent {
         let llm = self.llm.clone();
         let tools = self.tools.clone();
         let prompts = self.prompts.clone();
+        let config = self.config.clone();
         let sessions = self.sessions.clone();
 
         tokio::spawn(async move {
-            let mut iterations = 0;
-
-            loop {
-                iterations += 1;
-                let cfg = config.get();
-                if iterations > cfg.max_iterations {
-                    let _ = tx.send(AgentEvent::Error("超过最大循环次数".into())).await;
-                    break;
-                }
-
-                let request = match build_request(&session, &prompts, &tools, &cfg).await {
-                    Ok(r) => r,
-                    Err(e) => {
-                        let _ = tx
-                            .send(AgentEvent::Error(format!("构建请求失败: {e}")))
-                            .await;
-                        break;
-                    }
-                };
-
-                match llm.chat(request).await {
-                    Ok(response) => {
-                        let mut has_tool_calls = false;
-                        let mut assistant_content = Vec::new();
-                        let mut tool_results = Vec::new();
-
-                        for block in &response.content {
-                            match block {
-                                ContentBlock::Thinking { text } => {
-                                    let _ = tx
-                                        .send(AgentEvent::Thinking(text.clone()))
-                                        .await;
-                                    assistant_content
-                                        .push(MessageContent::Thinking { text: text.clone() });
-                                }
-                                ContentBlock::Text { text } => {
-                                    let _ = tx
-                                        .send(AgentEvent::TextComplete(text.clone()))
-                                        .await;
-                                    assistant_content
-                                        .push(MessageContent::Text { text: text.clone() });
-                                }
-                                ContentBlock::ToolUse { id, name, input } => {
-                                    has_tool_calls = true;
-                                    let input_preview = tool_input_preview(name, input);
-                                    let _ = tx
-                                        .send(AgentEvent::ToolCallStart {
-                                            id: id.clone(),
-                                            name: name.clone(),
-                                            input_preview,
-                                        })
-                                        .await;
-
-                                    let working_dir = session.working_dir.clone();
-                                    let result = {
-                                        let guard = tools.read().await;
-                                        guard.execute(name, input.clone(), &working_dir).await
-                                    };
-
-                                    let output = match result {
-                                        Ok(o) => o,
-                                        Err(e) => {
-                                            warn!("Tool '{name}' failed: {e}");
-                                            prompts
-                                                .render_tool_error(name, &e.to_string())
-                                                .unwrap_or_else(|_| e.to_string())
-                                        }
-                                    };
-
-                                    let _ = tx
-                                        .send(AgentEvent::ToolCallEnd {
-                                            id: id.clone(),
-                                            name: name.clone(),
-                                            result: output.clone(),
-                                        })
-                                        .await;
-
-                                    assistant_content.push(MessageContent::ToolCall {
-                                        id: id.clone(),
-                                        name: name.clone(),
-                                        arguments: input.clone(),
-                                    });
-                                    tool_results.push(MessageContent::ToolResult {
-                                        tool_use_id: id.clone(),
-                                        output,
-                                    });
-                                }
-                                ContentBlock::ToolResult { .. } => {}
-                            }
-                        }
-
-                        session.add_message(Message {
-                            role: Role::Assistant,
-                            content: assistant_content,
-                        });
-
-                        if has_tool_calls {
-                            session.add_message(Message {
-                                role: Role::User,
-                                content: tool_results,
-                            });
-                        } else {
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        error!("LLM request failed: {e}");
-                        let _ = tx
-                            .send(AgentEvent::Error(format!("LLM 请求失败: {e}")))
-                            .await;
-                        break;
-                    }
-                }
-            }
-
+            run_loop(&llm, &tools, &prompts, &config, &mut session, &tx).await;
             let _ = tx.send(AgentEvent::Done).await;
             let _ = sessions.save(&session).await;
         });
 
         Ok((sid, rx))
     }
+}
+
+async fn run_loop(
+    llm: &Arc<dyn LlmProvider>,
+    tools: &Arc<RwLock<ToolRegistry>>,
+    prompts: &PromptManager,
+    config: &Config,
+    session: &mut crate::core::session::Session,
+    tx: &Sender<AgentEvent>,
+) {
+    let mut iterations = 0;
+
+    loop {
+        iterations += 1;
+        let cfg = config.get();
+        if iterations > cfg.max_iterations {
+            let _ = tx.send(AgentEvent::Error("超过最大循环次数".into())).await;
+            return;
+        }
+
+        let request = match build_request(session, prompts, tools, &cfg).await {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = tx.send(AgentEvent::Error(format!("构建请求失败: {e}"))).await;
+                return;
+            }
+        };
+
+        let response = match llm.chat(request).await {
+            Ok(r) => r,
+            Err(e) => {
+                error!("LLM request failed: {e}");
+                let _ = tx.send(AgentEvent::Error(format!("LLM 请求失败: {e}"))).await;
+                return;
+            }
+        };
+
+        if !process_response(response, session, tools, prompts, tx).await {
+            return;
+        }
+    }
+}
+
+async fn process_response(
+    response: ChatResponse,
+    session: &mut crate::core::session::Session,
+    tools: &Arc<RwLock<ToolRegistry>>,
+    prompts: &PromptManager,
+    tx: &Sender<AgentEvent>,
+) -> bool {
+    let mut has_tool_calls = false;
+    let mut assistant_content = Vec::new();
+    let mut tool_results = Vec::new();
+
+    for block in &response.content {
+        match block {
+            ContentBlock::Thinking { text } => {
+                let _ = tx.send(AgentEvent::Thinking(text.clone())).await;
+                assistant_content.push(MessageContent::Thinking { text: text.clone() });
+            }
+            ContentBlock::Text { text } => {
+                let _ = tx.send(AgentEvent::TextComplete(text.clone())).await;
+                assistant_content.push(MessageContent::Text { text: text.clone() });
+            }
+            ContentBlock::ToolUse { id, name, input } => {
+                has_tool_calls = true;
+                let output = execute_tool(id, name, input, &session.working_dir, tools, prompts, tx).await;
+
+                assistant_content.push(MessageContent::ToolCall {
+                    id: id.clone(),
+                    name: name.clone(),
+                    arguments: input.clone(),
+                });
+                tool_results.push(MessageContent::ToolResult {
+                    tool_use_id: id.clone(),
+                    output,
+                });
+            }
+            ContentBlock::ToolResult { .. } => {}
+        }
+    }
+
+    session.add_message(Message {
+        role: Role::Assistant,
+        content: assistant_content,
+    });
+
+    if has_tool_calls {
+        session.add_message(Message {
+            role: Role::User,
+            content: tool_results,
+        });
+    }
+
+    has_tool_calls
+}
+
+async fn execute_tool(
+    id: &str,
+    name: &str,
+    input: &serde_json::Value,
+    working_dir: &Path,
+    tools: &Arc<RwLock<ToolRegistry>>,
+    prompts: &PromptManager,
+    tx: &Sender<AgentEvent>,
+) -> String {
+    let input_preview = tool_input_preview(name, input);
+    let _ = tx
+        .send(AgentEvent::ToolCallStart {
+            id: id.to_string(),
+            name: name.to_string(),
+            input_preview,
+        })
+        .await;
+
+    let result = {
+        let guard = tools.read().await;
+        guard.execute(name, input.clone(), working_dir).await
+    };
+
+    let output = match result {
+        Ok(o) => o,
+        Err(e) => {
+            warn!("Tool '{name}' failed: {e}");
+            prompts
+                .render_tool_error(name, &e.to_string())
+                .unwrap_or_else(|_| e.to_string())
+        }
+    };
+
+    let _ = tx
+        .send(AgentEvent::ToolCallEnd {
+            id: id.to_string(),
+            name: name.to_string(),
+            result: output.clone(),
+        })
+        .await;
+
+    output
 }
 
 async fn build_request(
