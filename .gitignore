@@ -1,5 +1,6 @@
 /target
 /data
+cli/data
 .env
 *.swp
 *.swo

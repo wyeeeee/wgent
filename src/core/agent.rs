@@ -199,7 +199,7 @@ async fn build_request(
     tools: &RwLock<ToolRegistry>,
     cfg: &crate::config::ConfigValues,
 ) -> Result<ChatRequest> {
-    let system = prompts.render_system("Agent", None::<&str>, &[], &session.working_dir)?;
+    let system = prompts.render_system("Wgent", None::<&str>, &[], &session.working_dir)?;
     let tool_defs = tools.read().await.definitions();
 
     let messages = session
