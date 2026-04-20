@@ -11,32 +11,36 @@ pub struct Config {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConfigValues {
+    #[serde(default)]
     pub api_key: String,
+    #[serde(default = "default_model")]
     pub model: String,
+    #[serde(default = "default_base_url")]
     pub base_url: String,
+    #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
+    #[serde(default)]
     pub thinking_budget: u32,
+    #[serde(default = "default_command_timeout")]
     pub command_timeout: u64,
+    #[serde(default = "default_max_iterations")]
     pub max_iterations: usize,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: usize,
+    #[serde(default = "default_tools")]
     pub tools: String,
+    #[serde(default = "default_commands")]
     pub commands: String,
 }
 
-impl Default for ConfigValues {
-    fn default() -> Self {
-        Self {
-            api_key: String::new(),
-            model: "claude-sonnet-4-20250514".into(),
-            base_url: "https://api.anthropic.com".into(),
-            max_tokens: 8096,
-            thinking_budget: 0,
-            command_timeout: 60,
-            max_iterations: 50,
-            tools: "all".into(),
-            commands: "all".into(),
-        }
-    }
-}
+fn default_model() -> String { "claude-sonnet-4-20250514".into() }
+fn default_base_url() -> String { "https://api.anthropic.com".into() }
+fn default_max_tokens() -> u32 { 8096 }
+fn default_command_timeout() -> u64 { 60 }
+fn default_max_iterations() -> usize { 50 }
+fn default_max_retries() -> usize { 10 }
+fn default_tools() -> String { "all".into() }
+fn default_commands() -> String { "all".into() }
 
 impl Config {
     pub fn new(values: ConfigValues) -> Self {
@@ -63,7 +67,7 @@ impl Config {
             let raw = std::fs::read_to_string(&config_path)?;
             serde_json::from_str::<ConfigValues>(&raw)?
         } else {
-            let defaults = ConfigValues::default();
+            let defaults: ConfigValues = serde_json::from_str("{}")?;
             let json = serde_json::to_string_pretty(&defaults)?;
             std::fs::write(&config_path, json)?;
             defaults

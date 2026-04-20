@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::Client;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::config::Config;
 use crate::llm::error::LlmError;
@@ -9,6 +9,7 @@ use crate::llm::provider::LlmProvider;
 use crate::llm::types::{ChatRequest, ChatResponse};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+const RETRY_INTERVAL_SECS: u64 = 5;
 
 pub struct AnthropicProvider {
     client: Client,
@@ -39,7 +40,26 @@ impl LlmProvider for AnthropicProvider {
         if request.thinking_budget == 0 {
             request.thinking_budget = cfg.thinking_budget;
         }
+        let max_retries = cfg.max_retries;
 
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            match self.send_request(&request).await {
+                Ok(resp) => return Ok(resp),
+                Err(e) if attempt <= max_retries => {
+                    warn!("LLM 请求失败 (第 {attempt}/{max_retries} 次): {e}，{RETRY_INTERVAL_SECS}s 后重试");
+                    tokio::time::sleep(std::time::Duration::from_secs(RETRY_INTERVAL_SECS)).await;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+}
+
+impl AnthropicProvider {
+    async fn send_request(&self, request: &ChatRequest) -> Result<ChatResponse> {
+        let cfg = self.config.get();
         let body = request.to_api();
         debug!("Sending request to Anthropic API, model={}, thinking_budget={}", request.model, request.thinking_budget);
 
