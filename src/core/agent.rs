@@ -9,7 +9,7 @@ use tracing::{error, warn};
 use crate::commands::CommandRegistry;
 use crate::config::Config;
 use crate::core::message::{Message, MessageContent};
-use crate::core::session::SessionManager;
+use crate::core::session::{Session, SessionManager};
 use crate::llm::provider::LlmProvider;
 use crate::llm::types::*;
 use crate::prompt::PromptManager;
@@ -42,17 +42,7 @@ impl Agent {
 
         let llm = Arc::new(crate::llm::AnthropicProvider::new(config.clone()));
         let prompts = Arc::new(PromptManager::new()?);
-        let mut tools = ToolRegistry::from_config(&config, &cfg.tools);
-
-        // SubAgentTool 需要依赖 LLM/Prompts，单独注册
-        let spec = cfg.tools.to_lowercase();
-        if spec.trim() == "all" || spec.split(',').any(|s| s.trim() == "subagent") {
-            tools.register(Box::new(crate::tools::builtin::SubAgentTool::new(
-                llm.clone(),
-                config.clone(),
-                prompts.clone(),
-            )));
-        }
+        let tools = ToolRegistry::from_config(&config, &cfg.tools, dir, working_dir);
 
         let commands = CommandRegistry::from_config(&cfg.commands);
         let sessions = SessionManager::new(dir.join("sessions"));
@@ -66,6 +56,15 @@ impl Agent {
             config,
             working_dir: working_dir.to_path_buf(),
         })
+    }
+
+    pub(crate) fn new_sub(dir: &Path, working_dir: &Path) -> Result<Self> {
+        let mut agent = Self::new(dir, working_dir)?;
+        Arc::get_mut(&mut agent.tools)
+            .unwrap()
+            .get_mut()
+            .remove("subagent");
+        Ok(agent)
     }
 
     pub fn session_manager(&self) -> SessionManager {
@@ -123,7 +122,7 @@ async fn run_loop(
     tools: Arc<RwLock<ToolRegistry>>,
     prompts: Arc<PromptManager>,
     config: Config,
-    session: &mut crate::core::session::Session,
+    session: &mut Session,
     tx: &Sender<AgentEvent>,
 ) {
     let mut iterations = 0;

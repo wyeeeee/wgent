@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use anyhow::{anyhow, Result};
 use serde_json::Value;
@@ -18,7 +19,7 @@ impl ToolRegistry {
         }
     }
 
-    pub fn from_config(config: &Config, spec: &str) -> Self {
+    pub fn from_config(config: &Config, spec: &str, dir: &Path, working_dir: &Path) -> Self {
         let mut registry = Self::new();
         let names = parse_spec(spec);
         let want_all = names.contains(&"all");
@@ -34,6 +35,12 @@ impl ToolRegistry {
         }
         if want_all || names.contains(&"edit") {
             registry.register(Box::new(crate::tools::builtin::EditTool));
+        }
+        if want_all || names.contains(&"subagent") {
+            registry.register(Box::new(crate::tools::builtin::SubAgentTool::new(
+                dir.to_path_buf(),
+                working_dir.to_path_buf(),
+            )));
         }
 
         registry
@@ -70,6 +77,10 @@ impl ToolRegistry {
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.tools.is_empty()
+    }
+
+    pub fn remove(&mut self, name: &str) {
+        self.tools.remove(name);
     }
 }
 
