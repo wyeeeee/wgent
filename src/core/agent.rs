@@ -41,6 +41,10 @@ impl Agent {
         }
     }
 
+    pub fn session_manager(&self) -> SessionManager {
+        self.sessions.clone()
+    }
+
     /// 核心 SDK 接口：传入 session_id 则接续会话，None 则自动创建新会话
     /// 返回 (实际 session_id, 事件流)
     pub async fn chat(

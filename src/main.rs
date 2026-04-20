@@ -1,3 +1,4 @@
+mod commands;
 mod config;
 mod core;
 mod llm;
@@ -13,6 +14,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use tracing::info;
 
+use commands::CommandRegistry;
+use commands::builtin::NewCommand;
 use config::{Config, ConfigValues};
 use core::Agent;
 use llm::AnthropicProvider;
@@ -49,10 +52,13 @@ async fn main() -> Result<()> {
     tools.register(Box::new(EditTool));
     tools.register(Box::new(BashTool::new(config.clone())));
 
+    let mut commands = CommandRegistry::new();
+    commands.register(Box::new(NewCommand));
+
     info!("Agent initialized, model={}, working_dir={}", llm.model_name(), working_dir.display());
 
     let agent = Arc::new(Agent::new(llm, tools, prompts, data_dir, config));
 
-    let transport = TerminalTransport::new();
+    let transport = TerminalTransport::new(commands);
     transport.run(agent, &working_dir).await
 }
