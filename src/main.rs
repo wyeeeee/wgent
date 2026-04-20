@@ -5,6 +5,7 @@ mod prompt;
 mod term;
 mod tools;
 mod transport;
+mod utils;
 
 use std::path::PathBuf;
 use std::sync::Arc;

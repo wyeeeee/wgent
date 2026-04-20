@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use crate::tools::tool::Tool;
-use super::resolve_path;
+use crate::utils::resolve_path;
 
 pub struct ReadTool;
 
