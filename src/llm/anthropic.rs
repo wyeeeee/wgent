@@ -40,7 +40,7 @@ impl LlmProvider for AnthropicProvider {
         if request.thinking_budget == 0 {
             request.thinking_budget = cfg.thinking_budget;
         }
-        let max_retries = cfg.max_retries;
+        let max_retries = cfg.llm_max_retries;
 
         let mut attempt = 0;
         loop {

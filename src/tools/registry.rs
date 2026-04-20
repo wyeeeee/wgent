@@ -36,6 +36,9 @@ impl ToolRegistry {
         if want_all || names.contains(&"edit") {
             registry.register(Box::new(crate::tools::builtin::EditTool));
         }
+        if want_all || names.contains(&"grep") {
+            registry.register(Box::new(crate::tools::builtin::GrepTool::new(config.clone())));
+        }
         if want_all || names.contains(&"subagent") {
             registry.register(Box::new(crate::tools::builtin::SubAgentTool::new(
                 dir.to_path_buf(),

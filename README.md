@@ -23,7 +23,9 @@ cargo build --release
   "max_tokens": 8096,
   "thinking_budget": 0,
   "command_timeout": 60,
-  "max_iterations": 50,
+  "agent_max_iterations": 50,
+  "llm_max_retries": 10,
+  "grep_max_results": 50,
   "tools": "all",
   "commands": "all"
 }

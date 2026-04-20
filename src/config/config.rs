@@ -23,10 +23,12 @@ pub struct ConfigValues {
     pub thinking_budget: u32,
     #[serde(default = "default_command_timeout")]
     pub command_timeout: u64,
-    #[serde(default = "default_max_iterations")]
-    pub max_iterations: usize,
-    #[serde(default = "default_max_retries")]
-    pub max_retries: usize,
+    #[serde(default = "default_agent_max_iterations")]
+    pub agent_max_iterations: usize,
+    #[serde(default = "default_llm_max_retries")]
+    pub llm_max_retries: usize,
+    #[serde(default = "default_grep_max_results")]
+    pub grep_max_results: usize,
     #[serde(default = "default_tools")]
     pub tools: String,
     #[serde(default = "default_commands")]
@@ -37,8 +39,9 @@ fn default_model() -> String { "claude-sonnet-4-20250514".into() }
 fn default_base_url() -> String { "https://api.anthropic.com".into() }
 fn default_max_tokens() -> u32 { 8096 }
 fn default_command_timeout() -> u64 { 60 }
-fn default_max_iterations() -> usize { 50 }
-fn default_max_retries() -> usize { 10 }
+fn default_agent_max_iterations() -> usize { 50 }
+fn default_llm_max_retries() -> usize { 10 }
+fn default_grep_max_results() -> usize { 50 }
 fn default_tools() -> String { "all".into() }
 fn default_commands() -> String { "all".into() }
 

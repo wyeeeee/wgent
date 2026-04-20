@@ -130,7 +130,7 @@ async fn run_loop(
     loop {
         iterations += 1;
         let cfg = config.get();
-        if iterations > cfg.max_iterations {
+        if iterations > cfg.agent_max_iterations {
             let _ = tx.send(AgentEvent::Error("超过最大循环次数".into())).await;
             return;
         }
