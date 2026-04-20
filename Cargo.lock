@@ -3,24 +3,6 @@
 version = 4
 
 [[package]]
-name = "agent"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "colored",
- "dotenvy",
- "reqwest",
- "serde",
- "serde_json",
- "tera",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2090,6 +2072,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31141ce3fc3e300ae89b78c0dd67f9708061d1d2eda54b8209346fd6be9a92c"
 dependencies = [
  "rustls-pki-types",
+]
+
+[[package]]
+name = "wgent"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tera",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "wgent-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "colored",
+ "dotenvy",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wgent",
 ]
 
 [[package]]

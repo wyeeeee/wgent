@@ -7,21 +7,20 @@ use async_trait::async_trait;
 use colored::Colorize;
 use tracing::debug;
 
-use crate::commands::{CommandContext, CommandRegistry, CommandResult};
-use crate::core::Agent;
-use crate::transport::{AgentEvent, Transport};
+use wgent::commands::{CommandContext, CommandRegistry, CommandResult};
+use wgent::core::Agent;
+use wgent::transport::{AgentEvent, Transport};
 
-pub struct TerminalTransport {
+struct TerminalTransport {
     commands: CommandRegistry,
 }
 
 impl TerminalTransport {
-    pub fn new(commands: CommandRegistry) -> Self {
+    fn new(commands: CommandRegistry) -> Self {
         Self { commands }
     }
 
-    /// 终端 UI 主循环：首次 chat 自动创建 session，后续自动接续
-    pub async fn run(&self, agent: Arc<Agent>, working_dir: &Path) -> Result<()> {
+    async fn run(&self, agent: Arc<Agent>, working_dir: &Path) -> Result<()> {
         let mut session_id: Option<String> = None;
 
         loop {
@@ -124,4 +123,44 @@ impl Transport for TerminalTransport {
         }
         Ok(())
     }
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
+
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("wgent=info".parse()?),
+        )
+        .init();
+
+    let config = wgent::config::Config::new(wgent::config::ConfigValues::from_env());
+    let data_dir = std::env::var("AGENT_DATA_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("data/sessions"));
+    let working_dir = std::env::var("AGENT_WORKING_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+
+    let llm = Arc::new(wgent::llm::AnthropicProvider::new(config.clone()));
+    let prompts = Arc::new(wgent::prompt::PromptManager::new()?);
+
+    let mut tools = wgent::tools::ToolRegistry::new();
+    tools.register(Box::new(wgent::tools::builtin::ReadTool));
+    tools.register(Box::new(wgent::tools::builtin::WriteTool));
+    tools.register(Box::new(wgent::tools::builtin::EditTool));
+    tools.register(Box::new(wgent::tools::builtin::BashTool::new(config.clone())));
+
+    let mut commands = wgent::commands::CommandRegistry::new();
+    commands.register(Box::new(wgent::commands::builtin::NewCommand));
+    commands.register(Box::new(wgent::commands::builtin::HelpCommand));
+
+    tracing::info!("Agent initialized, model={}, working_dir={}", llm.model_name(), working_dir.display());
+
+    let agent = Arc::new(wgent::core::Agent::new(llm, tools, prompts, data_dir, config));
+
+    let transport = TerminalTransport::new(commands);
+    transport.run(agent, &working_dir).await
 }

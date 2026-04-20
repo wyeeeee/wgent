@@ -1,7 +1,10 @@
 [package]
-name = "agent"
+name = "wgent"
 version = "0.1.0"
 edition = "2024"
+
+[workspace]
+members = ["cli"]
 
 [dependencies]
 tokio = { version = "1.52.1", features = ["full"] }
@@ -11,8 +14,5 @@ anyhow = "1.0.102"
 thiserror = "2.0.18"
 async-trait = "0.1.89"
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 reqwest = { version = "0.13.2", features = ["json"] }
 tera = "1"
-colored = "3.1.1"
-dotenvy = "0.15"
