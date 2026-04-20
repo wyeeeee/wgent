@@ -1,10 +1,8 @@
-use std::path::Path;
-
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::tools::tool::Tool;
+use crate::tools::tool::{Tool, ToolContext};
 use crate::utils::resolve_path;
 
 pub struct EditTool;
@@ -48,7 +46,7 @@ impl Tool for EditTool {
         })
     }
 
-    async fn execute(&self, input: Value, working_dir: &Path) -> Result<String> {
+    async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<String> {
         let path_str = input["path"]
             .as_str()
             .ok_or_else(|| anyhow!("缺少 path 参数"))?;
@@ -64,7 +62,7 @@ impl Tool for EditTool {
             .to_string();
         let old_content = input.get("old_content").and_then(|v| v.as_str());
 
-        let path = resolve_path(working_dir, path_str)?;
+        let path = resolve_path(&ctx.working_dir, path_str)?;
         let raw = tokio::fs::read_to_string(&path)
             .await
             .map_err(|e| anyhow!("读取文件失败 {}: {e}", path.display()))?;
@@ -82,7 +80,6 @@ impl Tool for EditTool {
             return Err(anyhow!("start_line({start_line}) > end_line({end_line})"));
         }
 
-        // 内容校验
         if let Some(expected) = old_content {
             let actual: String = lines[start_line - 1..end_line].join("\n");
             if actual.trim() != expected.trim() {
@@ -93,10 +90,8 @@ impl Tool for EditTool {
             }
         }
 
-        // 记录旧内容用于 diff 展示
         let old_lines: String = lines[start_line - 1..end_line].join("\n");
 
-        // 执行替换
         let replacement: Vec<String> = if new_content.is_empty() {
             Vec::new()
         } else {

@@ -1,10 +1,8 @@
-use std::path::Path;
-
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::tools::tool::Tool;
+use crate::tools::tool::{Tool, ToolContext};
 use crate::utils::resolve_path;
 
 pub struct ReadTool;
@@ -40,11 +38,11 @@ impl Tool for ReadTool {
         })
     }
 
-    async fn execute(&self, input: Value, working_dir: &Path) -> Result<String> {
+    async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<String> {
         let path_str = input["path"]
             .as_str()
             .ok_or_else(|| anyhow!("缺少 path 参数"))?;
-        let path = resolve_path(working_dir, path_str)?;
+        let path = resolve_path(&ctx.working_dir, path_str)?;
 
         let content = tokio::fs::read_to_string(&path)
             .await

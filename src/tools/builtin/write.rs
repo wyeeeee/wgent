@@ -1,10 +1,8 @@
-use std::path::Path;
-
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::tools::tool::Tool;
+use crate::tools::tool::{Tool, ToolContext};
 use crate::utils::resolve_path;
 
 pub struct WriteTool;
@@ -36,14 +34,14 @@ impl Tool for WriteTool {
         })
     }
 
-    async fn execute(&self, input: Value, working_dir: &Path) -> Result<String> {
+    async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<String> {
         let path_str = input["path"]
             .as_str()
             .ok_or_else(|| anyhow!("缺少 path 参数"))?;
         let content = input["content"]
             .as_str()
             .ok_or_else(|| anyhow!("缺少 content 参数"))?;
-        let path = resolve_path(working_dir, path_str)?;
+        let path = resolve_path(&ctx.working_dir, path_str)?;
 
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await?;

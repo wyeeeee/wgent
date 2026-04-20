@@ -13,6 +13,7 @@ use crate::core::session::SessionManager;
 use crate::llm::provider::LlmProvider;
 use crate::llm::types::*;
 use crate::prompt::PromptManager;
+use crate::tools::tool::ToolContext;
 use crate::tools::ToolRegistry;
 use crate::transport::AgentEvent;
 use crate::utils::tool_input_preview;
@@ -41,7 +42,18 @@ impl Agent {
 
         let llm = Arc::new(crate::llm::AnthropicProvider::new(config.clone()));
         let prompts = Arc::new(PromptManager::new()?);
-        let tools = ToolRegistry::from_config(&config, &cfg.tools);
+        let mut tools = ToolRegistry::from_config(&config, &cfg.tools);
+
+        // SubAgentTool 需要依赖 LLM/Prompts，单独注册
+        let spec = cfg.tools.to_lowercase();
+        if spec.trim() == "all" || spec.split(',').any(|s| s.trim() == "subagent") {
+            tools.register(Box::new(crate::tools::builtin::SubAgentTool::new(
+                llm.clone(),
+                config.clone(),
+                prompts.clone(),
+            )));
+        }
+
         let commands = CommandRegistry::from_config(&cfg.commands);
         let sessions = SessionManager::new(dir.join("sessions"));
 
@@ -214,9 +226,13 @@ async fn process_response(
             let working_dir = session.working_dir.clone();
 
             handles.push(tokio::spawn(async move {
+                let ctx = ToolContext {
+                    working_dir,
+                    events: Some(tx.clone()),
+                };
                 let result = {
                     let guard = tools.read().await;
-                    guard.execute(&tc.name, tc.input.clone(), &working_dir).await
+                    guard.execute(&tc.name, tc.input.clone(), &ctx).await
                 };
 
                 let output = match result {

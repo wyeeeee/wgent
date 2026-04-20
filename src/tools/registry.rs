@@ -1,12 +1,11 @@
 use std::collections::HashMap;
-use std::path::Path;
 
 use anyhow::{anyhow, Result};
 use serde_json::Value;
 
 use crate::config::Config;
 use crate::llm::ToolDefinition;
-use crate::tools::tool::Tool;
+use crate::tools::tool::{Tool, ToolContext};
 
 pub struct ToolRegistry {
     tools: HashMap<String, Box<dyn Tool>>,
@@ -49,12 +48,12 @@ impl ToolRegistry {
         self.tools.get(name).map(|t| t.as_ref())
     }
 
-    pub async fn execute(&self, name: &str, input: Value, working_dir: &Path) -> Result<String> {
+    pub async fn execute(&self, name: &str, input: Value, ctx: &ToolContext) -> Result<String> {
         let tool = self
             .tools
             .get(name)
             .ok_or_else(|| anyhow!("tool not found: {name}"))?;
-        tool.execute(input, working_dir).await
+        tool.execute(input, ctx).await
     }
 
     pub fn definitions(&self) -> Vec<ToolDefinition> {

@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
@@ -6,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use crate::config::Config;
-use crate::tools::tool::Tool;
+use crate::tools::tool::{Tool, ToolContext};
 
 pub struct BashTool {
     config: Config,
@@ -41,7 +40,7 @@ impl Tool for BashTool {
         })
     }
 
-    async fn execute(&self, input: Value, working_dir: &Path) -> Result<String> {
+    async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<String> {
         let command = input["command"]
             .as_str()
             .ok_or_else(|| anyhow!("缺少 command 参数"))?;
@@ -54,7 +53,7 @@ impl Tool for BashTool {
 
         let output = tokio::time::timeout(
             Duration::from_secs(timeout_secs),
-            shell_command(command, working_dir),
+            shell_command(command, &ctx.working_dir),
         )
         .await
         .map_err(|_| anyhow!("命令执行超时（{}秒）", timeout_secs))?
@@ -83,8 +82,7 @@ impl Tool for BashTool {
     }
 }
 
-/// 按平台选择 shell 执行命令
-async fn shell_command(command: &str, working_dir: &Path) -> std::io::Result<std::process::Output> {
+async fn shell_command(command: &str, working_dir: &std::path::Path) -> std::io::Result<std::process::Output> {
     if cfg!(windows) {
         tokio::process::Command::new("pwsh")
             .arg("-NoProfile")
