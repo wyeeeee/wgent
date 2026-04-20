@@ -40,17 +40,23 @@ impl Agent {
         }
     }
 
-    /// 核心 SDK 接口：接收 session_id、working_dir 和用户消息，返回事件流
+    /// 核心 SDK 接口：传入 session_id 则接续会话，None 则自动创建新会话
+    /// 返回 (实际 session_id, 事件流)
     pub async fn chat(
         &self,
-        session_id: &str,
+        session_id: Option<&str>,
         user_message: &str,
         working_dir: &Path,
-    ) -> Result<Receiver<AgentEvent>> {
+    ) -> Result<(String, Receiver<AgentEvent>)> {
         let (tx, rx) = tokio::sync::mpsc::channel(32);
         let config = self.config.clone();
 
-        let mut session = self.sessions.get_or_create(session_id, working_dir.to_path_buf()).await?;
+        let sid = match session_id {
+            Some(id) => id.to_string(),
+            None => self.sessions.generate_id(),
+        };
+
+        let mut session = self.sessions.get_or_create(&sid, working_dir.to_path_buf()).await?;
         session.add_message(Message::user(user_message));
 
         let llm = self.llm.clone();
@@ -178,7 +184,7 @@ impl Agent {
             let _ = sessions.save(&session).await;
         });
 
-        Ok(rx)
+        Ok((sid, rx))
     }
 }
 

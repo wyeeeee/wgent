@@ -17,15 +17,19 @@ impl TerminalTransport {
         Self
     }
 
-    /// 终端 UI 主循环
-    pub async fn run(&self, agent: Arc<Agent>, session_id: &str, working_dir: &Path) -> Result<()> {
+    /// 终端 UI 主循环：首次 chat 自动创建 session，后续自动接续
+    pub async fn run(&self, agent: Arc<Agent>, working_dir: &Path) -> Result<()> {
+        let mut session_id: Option<String> = None;
+
         loop {
             let input = self.read_input().await?;
             if input.trim().is_empty() {
                 continue;
             }
 
-            let mut rx = agent.chat(session_id, &input, working_dir).await?;
+            let (sid, mut rx) = agent.chat(session_id.as_deref(), &input, working_dir).await?;
+            session_id = Some(sid);
+
             while let Some(event) = rx.recv().await {
                 self.send_event(event).await?;
             }

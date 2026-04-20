@@ -8,7 +8,6 @@ mod transport;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use tracing::info;
@@ -52,27 +51,7 @@ async fn main() -> Result<()> {
     info!("Agent initialized, model={}, working_dir={}", llm.model_name(), working_dir.display());
 
     let agent = Arc::new(Agent::new(llm, tools, prompts, data_dir, config));
-    let session_id = generate_session_id();
-    info!("session: {session_id}");
 
     let transport = TerminalTransport::new();
-    transport.run(agent, &session_id, &working_dir).await
-}
-
-fn generate_session_id() -> String {
-    let ns = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let hash = fnv1a(&ns.to_le_bytes());
-    format!("{hash:08x}")
-}
-
-fn fnv1a(data: &[u8]) -> u32 {
-    let mut hash: u32 = 0x811c9dc5;
-    for &b in data {
-        hash ^= b as u32;
-        hash = hash.wrapping_mul(0x01000193);
-    }
-    hash
+    transport.run(agent, &working_dir).await
 }

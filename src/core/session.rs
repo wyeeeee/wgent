@@ -66,6 +66,16 @@ impl SessionManager {
         }
     }
 
+    /// 生成唯一 session ID
+    pub fn generate_id(&self) -> String {
+        let ns = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let hash = fnv1a(&ns.to_le_bytes());
+        format!("{hash:08x}")
+    }
+
     /// 获取或创建 session（先查缓存，再查文件，最后新建）
     pub async fn get_or_create(&self, id: &str, working_dir: PathBuf) -> Result<Session> {
         {
@@ -116,4 +126,13 @@ impl SessionManager {
         let safe = id.replace(['/', '\\', ':'], "_");
         self.inner.data_dir.join(format!("{safe}.json"))
     }
+}
+
+fn fnv1a(data: &[u8]) -> u32 {
+    let mut hash: u32 = 0x811c9dc5;
+    for &b in data {
+        hash ^= b as u32;
+        hash = hash.wrapping_mul(0x01000193);
+    }
+    hash
 }
