@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 use tokio::sync::mpsc::Receiver;
 use tracing::{error, warn};
 
+use crate::config::Config;
 use crate::core::message::{Message, MessageContent};
 use crate::core::session::SessionManager;
 use crate::llm::provider::LlmProvider;
@@ -19,7 +20,7 @@ pub struct Agent {
     tools: Arc<RwLock<ToolRegistry>>,
     prompts: Arc<PromptManager>,
     sessions: SessionManager,
-    max_iterations: usize,
+    config: Config,
 }
 
 impl Agent {
@@ -28,14 +29,14 @@ impl Agent {
         tools: ToolRegistry,
         prompts: Arc<PromptManager>,
         data_dir: PathBuf,
-        max_iterations: usize,
+        config: Config,
     ) -> Self {
         Self {
             llm,
             tools: Arc::new(RwLock::new(tools)),
             prompts,
             sessions: SessionManager::new(data_dir),
-            max_iterations,
+            config,
         }
     }
 
@@ -47,7 +48,7 @@ impl Agent {
         working_dir: &Path,
     ) -> Result<Receiver<AgentEvent>> {
         let (tx, rx) = tokio::sync::mpsc::channel(32);
-        let max_iterations = self.max_iterations;
+        let config = self.config.clone();
 
         let mut session = self.sessions.get_or_create(session_id, working_dir.to_path_buf()).await?;
         session.add_message(Message::user(user_message));
@@ -62,12 +63,13 @@ impl Agent {
 
             loop {
                 iterations += 1;
-                if iterations > max_iterations {
+                let cfg = config.get();
+                if iterations > cfg.max_iterations {
                     let _ = tx.send(AgentEvent::Error("超过最大循环次数".into())).await;
                     break;
                 }
 
-                let request = match build_request(&session, &prompts, &tools).await {
+                let request = match build_request(&session, &prompts, &tools, &cfg).await {
                     Ok(r) => r,
                     Err(e) => {
                         let _ = tx
@@ -85,6 +87,13 @@ impl Agent {
 
                         for block in &response.content {
                             match block {
+                                ContentBlock::Thinking { text } => {
+                                    let _ = tx
+                                        .send(AgentEvent::Thinking(text.clone()))
+                                        .await;
+                                    assistant_content
+                                        .push(MessageContent::Thinking { text: text.clone() });
+                                }
                                 ContentBlock::Text { text } => {
                                     let _ = tx
                                         .send(AgentEvent::TextComplete(text.clone()))
@@ -177,6 +186,7 @@ async fn build_request(
     session: &crate::core::session::Session,
     prompts: &PromptManager,
     tools: &RwLock<ToolRegistry>,
+    cfg: &crate::config::ConfigValues,
 ) -> Result<ChatRequest> {
     let system = prompts.render_system("Agent", None::<&str>, &[], &session.working_dir)?;
     let tool_defs = tools.read().await.definitions();
@@ -190,6 +200,7 @@ async fn build_request(
                 .content
                 .iter()
                 .map(|c| match c {
+                    MessageContent::Thinking { text } => ContentBlock::Thinking { text: text.clone() },
                     MessageContent::Text { text } => ContentBlock::Text { text: text.clone() },
                     MessageContent::ToolCall { id, name, arguments } => ContentBlock::ToolUse {
                         id: id.clone(),
@@ -209,10 +220,11 @@ async fn build_request(
 
     Ok(ChatRequest {
         model: String::new(),
-        max_tokens: 0,
+        max_tokens: cfg.max_tokens,
         system: Some(system),
         messages,
         tools: tool_defs,
+        thinking_budget: cfg.thinking_budget,
     })
 }
 

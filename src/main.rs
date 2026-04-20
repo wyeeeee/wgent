@@ -1,3 +1,4 @@
+mod config;
 mod core;
 mod llm;
 mod prompt;
@@ -12,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::Result;
 use tracing::info;
 
+use config::{Config, ConfigValues};
 use core::Agent;
 use llm::AnthropicProvider;
 use prompt::PromptManager;
@@ -42,25 +44,21 @@ async fn main() -> Result<()> {
     let working_dir = std::env::var("AGENT_WORKING_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let command_timeout: u64 = std::env::var("AGENT_COMMAND_TIMEOUT")
-        .ok().and_then(|v| v.parse().ok()).unwrap_or(60);
-    let max_iterations: usize = std::env::var("AGENT_MAX_ITERATIONS")
-        .ok().and_then(|v| v.parse().ok()).unwrap_or(50);
-    let max_tokens: u32 = std::env::var("AGENT_MAX_TOKENS")
-        .ok().and_then(|v| v.parse().ok()).unwrap_or(8096);
 
-    let llm = Arc::new(AnthropicProvider::with_base_url(api_key, model, base_url, max_tokens));
+    let config = Config::new(ConfigValues::from_env());
+
+    let llm = Arc::new(AnthropicProvider::with_base_url(api_key, model, base_url, config.clone()));
     let prompts = Arc::new(PromptManager::new()?);
 
     let mut tools = ToolRegistry::new();
     tools.register(Box::new(ReadTool));
     tools.register(Box::new(WriteTool));
     tools.register(Box::new(EditTool));
-    tools.register(Box::new(BashTool::new(command_timeout)));
+    tools.register(Box::new(BashTool::new(config.clone())));
 
     info!("Agent initialized, model={}, working_dir={}", llm.model_name(), working_dir.display());
 
-    let agent = Arc::new(Agent::new(llm, tools, prompts, data_dir, max_iterations));
+    let agent = Arc::new(Agent::new(llm, tools, prompts, data_dir, config));
     let session_id = generate_session_id();
     info!("session: {session_id}");
 

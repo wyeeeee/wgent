@@ -5,15 +5,16 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
+use crate::config::Config;
 use crate::tools::tool::Tool;
 
 pub struct BashTool {
-    timeout_secs: u64,
+    config: Config,
 }
 
 impl BashTool {
-    pub fn new(timeout_secs: u64) -> Self {
-        Self { timeout_secs }
+    pub fn new(config: Config) -> Self {
+        Self { config }
     }
 }
 
@@ -49,12 +50,14 @@ impl Tool for BashTool {
             return Err(anyhow!("命令不能为空"));
         }
 
+        let timeout_secs = self.config.get().command_timeout;
+
         let output = tokio::time::timeout(
-            Duration::from_secs(self.timeout_secs),
+            Duration::from_secs(timeout_secs),
             shell_command(command, working_dir),
         )
         .await
-        .map_err(|_| anyhow!("命令执行超时（{}秒）", self.timeout_secs))?
+        .map_err(|_| anyhow!("命令执行超时（{}秒）", timeout_secs))?
         .map_err(|e| anyhow!("启动命令失败: {e}"))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);

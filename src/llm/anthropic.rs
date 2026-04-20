@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use tracing::{debug, info};
 
+use crate::config::Config;
 use crate::llm::error::LlmError;
 use crate::llm::provider::LlmProvider;
 use crate::llm::types::{ChatRequest, ChatResponse};
@@ -14,18 +15,18 @@ pub struct AnthropicProvider {
     api_key: String,
     base_url: String,
     model: String,
-    max_tokens: u32,
+    config: Config,
 }
 
 impl AnthropicProvider {
-    pub fn with_base_url(api_key: String, model: String, base_url: String, max_tokens: u32) -> Self {
+    pub fn with_base_url(api_key: String, model: String, base_url: String, config: Config) -> Self {
         let base_url = base_url.trim_end_matches('/').to_string();
         Self {
             client: Client::new(),
             api_key,
             base_url,
             model,
-            max_tokens,
+            config,
         }
     }
 
@@ -37,13 +38,17 @@ impl AnthropicProvider {
 #[async_trait]
 impl LlmProvider for AnthropicProvider {
     async fn chat(&self, mut request: ChatRequest) -> Result<ChatResponse> {
+        let cfg = self.config.get();
         request.model = self.model.clone();
         if request.max_tokens == 0 {
-            request.max_tokens = self.max_tokens;
+            request.max_tokens = cfg.max_tokens;
+        }
+        if request.thinking_budget == 0 {
+            request.thinking_budget = cfg.thinking_budget;
         }
 
         let body = request.to_api();
-        debug!("Sending request to Anthropic API, model={}", request.model);
+        debug!("Sending request to Anthropic API, model={}, thinking_budget={}", request.model, request.thinking_budget);
 
         let resp = self
             .client
