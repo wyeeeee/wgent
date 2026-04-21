@@ -1,10 +1,9 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use reqwest::Client;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
-use crate::llm::error::LlmError;
 use crate::llm::provider::LlmProvider;
 use crate::llm::types::{ChatRequest, ChatResponse};
 
@@ -72,35 +71,26 @@ impl AnthropicProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+            .map_err(|e| anyhow!("API 请求失败: {e}"))?;
 
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(LlmError::ApiError {
-                status: status.as_u16(),
-                message: text,
-            }
-            .into());
+            return Err(anyhow!("API 错误: status={}, body={}", status.as_u16(), text));
         }
 
         let raw = resp
             .text()
             .await
-            .map_err(|e| LlmError::ParseError(e.to_string()))?;
+            .map_err(|e| anyhow!("读取响应失败: {e}"))?;
 
         debug!("Raw API response: {raw}");
 
-        let api_resp: serde_json::Value = serde_json::from_str(&raw)
-            .map_err(|e| LlmError::ParseError(format!("JSON parse failed: {e}, body: {raw}")))?;
+        let api_resp: crate::llm::types::ApiResponse = serde_json::from_str(&raw)
+            .map_err(|e| anyhow!("解析响应失败: {e}"))?;
 
-        let typed_resp: crate::llm::types::ApiResponse =
-            serde_json::from_value(api_resp).map_err(|e| {
-                LlmError::ParseError(format!("Response struct parse failed: {e}, body: {raw}"))
-            })?;
-
-        let chat_response = ChatResponse::try_from(typed_resp)
-            .map_err(|e| LlmError::ParseError(e))?;
+        let chat_response = ChatResponse::try_from(api_resp)
+            .map_err(|e| anyhow!("响应转换失败: {e}"))?;
 
         info!(
             "LLM response: stop_reason={:?}, input_tokens={}, output_tokens={}",

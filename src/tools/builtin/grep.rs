@@ -59,73 +59,87 @@ impl Tool for GrepTool {
             None => ctx.working_dir.clone(),
         };
 
-        let re = Regex::new(&format!("(?i){}", regex::escape(pattern)))?;
         let max_results = self.config.get().grep_max_results;
+        let re = Regex::new(&format!("(?i){}", regex::escape(pattern)))?;
+        let pattern_owned = pattern.to_string();
 
-        let mut results = Vec::new();
-        let mut file_count = 0;
+        tokio::task::spawn_blocking(move || grep_sync(&re, &search_dir, max_results))
+            .await
+            .map_err(|e| anyhow!("搜索任务失败: {e}"))?
+            .map(|(file_count, results)| {
+                if results.is_empty() {
+                    format!("未找到匹配 \"{}\" 的结果", pattern_owned)
+                } else {
+                    format!(
+                        "搜索 \"{}\" ({} 个文件, {} 条结果):\n{}",
+                        pattern_owned,
+                        file_count,
+                        results.len(),
+                        results.join("\n")
+                    )
+                }
+            })
+    }
+}
 
-        for entry in WalkBuilder::new(&search_dir)
-            .hidden(true)
-            .git_ignore(true)
-            .build()
-        {
+fn grep_sync(re: &Regex, search_dir: &std::path::Path, max_results: usize) -> Result<(usize, Vec<String>)> {
+    let mut results = Vec::new();
+    let mut file_count = 0;
+
+    for entry in WalkBuilder::new(search_dir)
+        .hidden(true)
+        .git_ignore(true)
+        .build()
+    {
+        if results.len() >= max_results {
+            results.push(format!("... (已达到 {} 条上限)", max_results));
+            break;
+        }
+
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let path = entry.path();
+
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if re.is_match(name) {
+                let rel = path.strip_prefix(search_dir).unwrap_or(path);
+                results.push(format!("{} (文件名匹配)", rel.display()));
+            }
+        }
+
+        if !entry.file_type().map_or(false, |ft| ft.is_file()) {
+            continue;
+        }
+
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        if content.bytes().any(|b| b == 0) {
+            continue;
+        }
+
+        let rel = path.strip_prefix(search_dir).unwrap_or(path);
+        let mut file_matched = false;
+
+        for (i, line) in content.lines().enumerate() {
+            if re.is_match(line) {
+                results.push(format!("{}:{} | {}", rel.display(), i + 1, line.trim_end()));
+                file_matched = true;
+            }
             if results.len() >= max_results {
-                results.push(format!("... (已达到 {} 条上限)", max_results));
                 break;
             }
-
-            let entry = match entry {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-
-            let path = entry.path();
-
-            // 文件名匹配
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if re.is_match(name) {
-                    let rel = path.strip_prefix(&search_dir).unwrap_or(path);
-                    results.push(format!("{} (文件名匹配)", rel.display()));
-                }
-            }
-
-            // 内容匹配（只搜文件，跳过目录和二进制）
-            if !entry.file_type().map_or(false, |ft| ft.is_file()) {
-                continue;
-            }
-
-            let content = match std::fs::read_to_string(path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-
-            if content.bytes().any(|b| b == 0) {
-                continue;
-            }
-
-            let rel = path.strip_prefix(&search_dir).unwrap_or(path);
-            let mut file_matched = false;
-
-            for (i, line) in content.lines().enumerate() {
-                if re.is_match(line) {
-                    results.push(format!("{}:{} | {}", rel.display(), i + 1, line.trim_end()));
-                    file_matched = true;
-                }
-                if results.len() >= max_results {
-                    break;
-                }
-            }
-
-            if file_matched {
-                file_count += 1;
-            }
         }
 
-        if results.is_empty() {
-            return Ok(format!("未找到匹配 \"{}\" 的结果", pattern));
+        if file_matched {
+            file_count += 1;
         }
-
-        Ok(format!("搜索 \"{}\" ({} 个文件, {} 条结果):\n{}", pattern, file_count, results.len(), results.join("\n")))
     }
+
+    Ok((file_count, results))
 }

@@ -59,12 +59,28 @@ impl Agent {
     }
 
     pub(crate) fn new_sub(dir: &Path, working_dir: &Path) -> Result<Self> {
-        let mut agent = Self::new(dir, working_dir)?;
-        Arc::get_mut(&mut agent.tools)
-            .unwrap()
-            .get_mut()
-            .remove("subagent");
-        Ok(agent)
+        let config = Config::load(dir)?;
+        let cfg = config.get();
+
+        if cfg.api_key.is_empty() {
+            bail!("API key 未设置");
+        }
+
+        let llm = Arc::new(crate::llm::AnthropicProvider::new(config.clone()));
+        let prompts = Arc::new(PromptManager::new()?);
+        let tools = ToolRegistry::from_config_excluding(
+            &config, &cfg.tools, &["subagent"], dir, working_dir,
+        );
+
+        Ok(Self {
+            llm,
+            tools: Arc::new(RwLock::new(tools)),
+            commands: Arc::new(RwLock::new(CommandRegistry::from_config(&cfg.commands))),
+            prompts,
+            sessions: SessionManager::new(dir.join("sessions")),
+            config,
+            working_dir: working_dir.to_path_buf(),
+        })
     }
 
     pub fn session_manager(&self) -> SessionManager {
@@ -95,11 +111,13 @@ impl Agent {
             None => self.sessions.generate_id(),
         };
 
-        let mut session = self
+        let session = self
             .sessions
             .get_or_create(&sid, self.working_dir.to_path_buf())
             .await?;
-        session.add_message(Message::user(user_message));
+
+        let mut guard = session.clone().write_owned().await;
+        guard.add_message(Message::user(user_message));
 
         let llm = self.llm.clone();
         let tools = self.tools.clone();
@@ -108,7 +126,8 @@ impl Agent {
         let sessions = self.sessions.clone();
 
         tokio::spawn(async move {
-            run_loop(llm, tools, prompts, config, &mut session, &tx).await;
+            run_loop(llm, tools, prompts, config, &mut *guard, &tx).await;
+            drop(guard);
             let _ = tx.send(AgentEvent::Done).await;
             let _ = sessions.save(&session).await;
         });

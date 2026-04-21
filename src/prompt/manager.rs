@@ -5,7 +5,6 @@ use tera::{Context, Tera};
 
 const SYSTEM_TEMPLATE: &str = include_str!("templates/system.md");
 const TOOL_ERROR_TEMPLATE: &str = include_str!("templates/tool_error.md");
-const TOOL_RESULT_TEMPLATE: &str = include_str!("templates/tool_result.md");
 
 pub struct PromptManager {
     tera: Tera,
@@ -16,7 +15,6 @@ impl PromptManager {
         let mut tera = Tera::default();
         tera.add_raw_template("system", SYSTEM_TEMPLATE)?;
         tera.add_raw_template("tool_error", TOOL_ERROR_TEMPLATE)?;
-        tera.add_raw_template("tool_result", TOOL_RESULT_TEMPLATE)?;
         Ok(Self { tera })
     }
 
@@ -46,13 +44,5 @@ impl PromptManager {
         ctx.insert("tool_name", tool_name);
         ctx.insert("error", error);
         self.render("tool_error", &ctx)
-    }
-
-    #[allow(dead_code)]
-    pub fn render_tool_result(&self, tool_name: &str, result: &str) -> Result<String> {
-        let mut ctx = Context::new();
-        ctx.insert("tool_name", tool_name);
-        ctx.insert("result", result);
-        self.render("tool_result", &ctx)
     }
 }

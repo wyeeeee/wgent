@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -8,7 +9,6 @@ use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 use crate::core::message::Message;
-use crate::utils::fnv1a;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
@@ -52,8 +52,9 @@ pub struct SessionManager {
 }
 
 struct SessionManagerInner {
-    cache: RwLock<HashMap<String, Session>>,
+    cache: RwLock<HashMap<String, Arc<RwLock<Session>>>>,
     data_dir: PathBuf,
+    counter: AtomicU64,
 }
 
 impl SessionManager {
@@ -63,22 +64,21 @@ impl SessionManager {
             inner: Arc::new(SessionManagerInner {
                 cache: RwLock::new(HashMap::new()),
                 data_dir,
+                counter: AtomicU64::new(0),
             }),
         }
     }
 
-    /// 生成唯一 session ID
     pub fn generate_id(&self) -> String {
-        let ns = std::time::SystemTime::now()
+        let count = self.inner.counter.fetch_add(1, Ordering::Relaxed);
+        let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let hash = fnv1a(&ns.to_le_bytes());
-        format!("{hash:08x}")
+            .unwrap_or_default()
+            .as_millis();
+        format!("{:08x}{:04x}", ts as u64, count & 0xFFFF)
     }
 
-    /// 获取或创建 session（先查缓存，再查文件，最后新建）
-    pub async fn get_or_create(&self, id: &str, working_dir: PathBuf) -> Result<Session> {
+    pub async fn get_or_create(&self, id: &str, working_dir: PathBuf) -> Result<Arc<RwLock<Session>>> {
         {
             let cache = self.inner.cache.read().await;
             if let Some(session) = cache.get(id) {
@@ -91,6 +91,7 @@ impl SessionManager {
             let data = tokio::fs::read_to_string(&path).await?;
             match serde_json::from_str::<Session>(&data) {
                 Ok(session) => {
+                    let session = Arc::new(RwLock::new(session));
                     let mut cache = self.inner.cache.write().await;
                     cache.insert(id.to_string(), session.clone());
                     debug!("session loaded from file: {id}");
@@ -102,24 +103,20 @@ impl SessionManager {
             }
         }
 
-        let session = Session::new(id.to_string(), working_dir);
+        let session = Arc::new(RwLock::new(Session::new(id.to_string(), working_dir)));
         let mut cache = self.inner.cache.write().await;
         cache.insert(id.to_string(), session.clone());
         debug!("session created: {id}");
         Ok(session)
     }
 
-    /// 持久化 session（更新缓存 + 写文件）
-    pub async fn save(&self, session: &Session) -> Result<()> {
-        {
-            let mut cache = self.inner.cache.write().await;
-            cache.insert(session.id.clone(), session.clone());
-        }
-
-        let path = self.file_path(&session.id);
-        let data = serde_json::to_string_pretty(session)?;
+    /// 持久化 session 到文件
+    pub async fn save(&self, session: &Arc<RwLock<Session>>) -> Result<()> {
+        let guard = session.read().await;
+        let path = self.file_path(&guard.id);
+        let data = serde_json::to_string_pretty(&*guard)?;
         tokio::fs::write(&path, data).await?;
-        debug!("session saved: {}", session.id);
+        debug!("session saved: {}", guard.id);
         Ok(())
     }
 

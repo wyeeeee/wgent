@@ -68,6 +68,7 @@ impl Tool for EditTool {
             .map_err(|e| anyhow!("读取文件失败 {}: {e}", path.display()))?;
 
         let mut lines: Vec<String> = raw.lines().map(|l| l.to_string()).collect();
+        let trailing_newline = raw.ends_with('\n');
         let total = lines.len();
 
         if start_line == 0 || start_line > total {
@@ -99,7 +100,10 @@ impl Tool for EditTool {
         };
         lines.splice(start_line - 1..end_line, replacement);
 
-        let result = lines.join("\n");
+        let mut result = lines.join("\n");
+        if trailing_newline {
+            result.push('\n');
+        }
         tokio::fs::write(&path, &result)
             .await
             .map_err(|e| anyhow!("写入文件失败 {}: {e}", path.display()))?;

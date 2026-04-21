@@ -20,26 +20,37 @@ impl ToolRegistry {
     }
 
     pub fn from_config(config: &Config, spec: &str, dir: &Path, working_dir: &Path) -> Self {
+        Self::from_config_excluding(config, spec, &[], dir, working_dir)
+    }
+
+    pub fn from_config_excluding(
+        config: &Config,
+        spec: &str,
+        exclude: &[&str],
+        dir: &Path,
+        working_dir: &Path,
+    ) -> Self {
         let mut registry = Self::new();
         let names = parse_spec(spec);
         let want_all = names.contains(&"all");
+        let excluded = |n: &str| exclude.contains(&n);
 
-        if want_all || names.contains(&"bash") {
+        if (want_all || names.contains(&"bash")) && !excluded("bash") {
             registry.register(Box::new(crate::tools::builtin::BashTool::new(config.clone())));
         }
-        if want_all || names.contains(&"read") {
+        if (want_all || names.contains(&"read")) && !excluded("read") {
             registry.register(Box::new(crate::tools::builtin::ReadTool));
         }
-        if want_all || names.contains(&"write") {
+        if (want_all || names.contains(&"write")) && !excluded("write") {
             registry.register(Box::new(crate::tools::builtin::WriteTool));
         }
-        if want_all || names.contains(&"edit") {
+        if (want_all || names.contains(&"edit")) && !excluded("edit") {
             registry.register(Box::new(crate::tools::builtin::EditTool));
         }
-        if want_all || names.contains(&"grep") {
+        if (want_all || names.contains(&"grep")) && !excluded("grep") {
             registry.register(Box::new(crate::tools::builtin::GrepTool::new(config.clone())));
         }
-        if want_all || names.contains(&"subagent") {
+        if (want_all || names.contains(&"subagent")) && !excluded("subagent") {
             registry.register(Box::new(crate::tools::builtin::SubAgentTool::new(
                 dir.to_path_buf(),
                 working_dir.to_path_buf(),
