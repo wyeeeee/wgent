@@ -38,18 +38,18 @@ pub async fn process_response(
     let mut tool_calls: Vec<ToolCall> = Vec::new();
 
     // Phase 1: process text/thinking blocks, collect tool calls
-    for block in &response.content {
+    for block in response.content {
         match block {
             ContentBlock::Thinking { text } => {
                 let _ = tx.send(AgentEvent::Thinking(text.clone())).await;
-                assistant_content.push(MessageContent::Thinking { text: text.clone() });
+                assistant_content.push(MessageContent::Thinking { text });
             }
             ContentBlock::Text { text } => {
                 let _ = tx.send(AgentEvent::TextComplete(text.clone())).await;
-                assistant_content.push(MessageContent::Text { text: text.clone() });
+                assistant_content.push(MessageContent::Text { text });
             }
             ContentBlock::ToolUse { id, name, input } => {
-                let input_preview = tool_input_preview(name, input);
+                let input_preview = tool_input_preview(&name, &input);
                 let _ = tx
                     .send(AgentEvent::ToolCallStart {
                         id: id.clone(),
@@ -59,9 +59,9 @@ pub async fn process_response(
                     .await;
 
                 tool_calls.push(ToolCall {
-                    id: id.clone(),
-                    name: name.clone(),
-                    input: input.clone(),
+                    id,
+                    name,
+                    input,
                 });
             }
             ContentBlock::ToolResult { .. } => {}

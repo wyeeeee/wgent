@@ -18,7 +18,7 @@ pub struct ChatMessage {
     pub content: Vec<ContentBlock>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     User,
