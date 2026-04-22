@@ -69,7 +69,13 @@ impl Tool for MultiEditTool {
                 .get("old_string")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow!("edits[{i}]: missing 'old_string'"))?;
-            let new_str = item.get("new_string").and_then(|v| v.as_str()).unwrap_or("");
+            let new_str = item
+                .get("new_string")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("edits[{i}]: missing 'new_string'"))?;
+            if old == new_str {
+                return Err(anyhow!("edits[{i}]: old_string and new_string are identical — no change requested."));
+            }
             edits.push((old, new_str));
         }
 

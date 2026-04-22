@@ -47,7 +47,13 @@ impl Tool for EditTool {
         let old = input["old_string"]
             .as_str()
             .ok_or_else(|| anyhow!("Missing 'old_string' parameter"))?;
-        let new_str = input["new_string"].as_str().unwrap_or("");
+        let new_str = input["new_string"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing 'new_string' parameter"))?;
+
+        if old == new_str {
+            return Err(anyhow!("old_string and new_string are identical — no change requested."));
+        }
 
         let content = tokio::fs::read_to_string(&path)
             .await
