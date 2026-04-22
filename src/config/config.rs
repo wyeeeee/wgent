@@ -29,6 +29,8 @@ pub struct ConfigValues {
     pub llm_max_retries: usize,
     #[serde(default = "default_grep_max_results")]
     pub grep_max_results: usize,
+    #[serde(default = "default_web_fetch_max_length")]
+    pub web_fetch_max_length: usize,
     #[serde(default = "default_tools")]
     pub tools: Vec<String>,
     #[serde(default = "default_commands")]
@@ -42,6 +44,7 @@ fn default_command_timeout() -> u64 { 60 }
 fn default_agent_max_iterations() -> usize { 50 }
 fn default_llm_max_retries() -> usize { 10 }
 fn default_grep_max_results() -> usize { 50 }
+fn default_web_fetch_max_length() -> usize { 500_000 }
 fn default_tools() -> Vec<String> { vec!["all".into()] }
 fn default_commands() -> Vec<String> { vec!["all".into()] }
 

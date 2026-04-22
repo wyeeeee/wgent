@@ -51,6 +51,7 @@ impl ToolRegistry {
                 dir.to_path_buf(),
                 working_dir.to_path_buf(),
             ))),
+            ("WebFetch", Box::new(crate::tools::builtin::WebFetchTool::new(config.clone()))),
         ];
 
         for (name, tool) in all_tools {

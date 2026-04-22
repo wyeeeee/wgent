@@ -5,6 +5,7 @@ pub mod ls;
 pub mod multi_edit;
 pub mod read;
 pub mod sub_agent;
+pub mod web_fetch;
 pub mod write;
 
 pub use bash::BashTool;
@@ -14,4 +15,5 @@ pub use ls::LsTool;
 pub use multi_edit::MultiEditTool;
 pub use read::ReadTool;
 pub use sub_agent::SubAgentTool;
+pub use web_fetch::WebFetchTool;
 pub use write::WriteTool;

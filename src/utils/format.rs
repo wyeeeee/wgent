@@ -30,6 +30,7 @@ pub fn tool_input_preview(name: &str, input: &serde_json::Value) -> String {
             let count = input.get("edits").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
             format!("{} ({} edits)", path, count)
         }
+        "WebFetch" => input["url"].as_str().unwrap_or("").to_string(),
         _ => input.to_string().chars().take(80).collect(),
     }
 }
