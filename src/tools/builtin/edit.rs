@@ -34,7 +34,7 @@ impl Tool for EditTool {
                     "description": "Replacement text. Empty string deletes the matched text."
                 }
             },
-            "required": ["path", "old_string"]
+            "required": ["path", "old_string", "new_string"]
         })
     }
 
