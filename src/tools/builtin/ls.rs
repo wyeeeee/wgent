@@ -19,7 +19,7 @@ impl Tool for LsTool {
     }
 
     fn description(&self) -> &str {
-        "List directory contents with line counts for files and aggregate info for subdirectories."
+        "List directory contents with line counts for files."
     }
 
     fn input_schema(&self) -> Value {
@@ -64,37 +64,6 @@ impl Tool for LsTool {
 
         Ok(format!("{}\n{}", path.display(), output))
     }
-}
-
-struct Aggregate {
-    file_count: usize,
-    dir_count: usize,
-    total_lines: usize,
-}
-
-/// Only scan one level deep — no recursive descent into subdirectories.
-fn shallow_aggregate(dir: &Path) -> Aggregate {
-    let mut agg = Aggregate {
-        file_count: 0,
-        dir_count: 0,
-        total_lines: 0,
-    };
-
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return agg;
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            agg.dir_count += 1;
-        } else {
-            agg.file_count += 1;
-            agg.total_lines += count_lines(&path);
-        }
-    }
-
-    agg
 }
 
 fn count_lines(path: &Path) -> usize {
@@ -143,18 +112,8 @@ fn list_dir(dir: &Path, max_depth: u8, current_depth: u8, output: &mut String) -
         };
 
         if path.is_dir() {
-            let expanded = current_depth + 1 < max_depth;
-            let agg = shallow_aggregate(&path);
-
-            let label = if expanded {
-                format!("{}/ ({} files, {} dirs, {} lines)", name, agg.file_count, agg.dir_count, agg.total_lines)
-            } else {
-                format!("{}/ ({} files, {} dirs, {} lines) [preview]", name, agg.file_count, agg.dir_count, agg.total_lines)
-            };
-
-            output.push_str(&format!("{prefix}{label}\n"));
-
-            if expanded {
+            output.push_str(&format!("{prefix}{name}/\n"));
+            if current_depth + 1 < max_depth {
                 list_dir(&path, max_depth, current_depth + 1, output)?;
             }
         } else if is_binary(&path) {
