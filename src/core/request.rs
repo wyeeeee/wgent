@@ -21,7 +21,7 @@ pub async fn build_request(
         .messages
         .iter()
         .map(|msg| ChatMessage {
-            role: msg.role.clone(),
+            role: msg.role,
             content: msg
                 .content
                 .iter()
