@@ -14,7 +14,7 @@ impl Tool for EditTool {
     }
 
     fn description(&self) -> &str {
-        "Edit a file by replacing exact text matches. Provide 'old_string' (must match exactly one location) and 'new_string' (replacement text). Read the file first to get exact text, then copy the portion to replace."
+        "Replace an exact text match in a file. old_string must match exactly one location; new_string replaces it (empty string to delete). If multiple matches, provide more context to disambiguate."
     }
 
     fn input_schema(&self) -> Value {
@@ -31,7 +31,7 @@ impl Tool for EditTool {
                 },
                 "new_string": {
                     "type": "string",
-                    "description": "Replacement text. Empty string deletes the matched text."
+                    "description": "Replacement text. Pass empty string to delete the matched text."
                 }
             },
             "required": ["path", "old_string", "new_string"]

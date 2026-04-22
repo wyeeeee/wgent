@@ -14,7 +14,7 @@ impl Tool for MultiEditTool {
     }
 
     fn description(&self) -> &str {
-        "Apply multiple text replacements to a single file in one operation. Each edit is an {old_string, new_string} pair applied sequentially — later edits see earlier results. All edits must succeed or the entire operation is rolled back."
+        "Apply multiple text replacements to one file in a single operation. Each edit replaces old_string with new_string (empty string to delete). Edits apply sequentially — later edits see earlier results. All must succeed or nothing is written."
     }
 
     fn input_schema(&self) -> Value {
@@ -33,11 +33,11 @@ impl Tool for MultiEditTool {
                         "properties": {
                             "old_string": {
                                 "type": "string",
-                                "description": "Exact text to find — must match exactly one location after previous edits"
+                                "description": "Exact text to find — must match exactly one location after prior edits"
                             },
                             "new_string": {
                                 "type": "string",
-                                "description": "Replacement text"
+                                "description": "Replacement text. Pass empty string to delete the matched text."
                             }
                         },
                         "required": ["old_string", "new_string"]
