@@ -26,7 +26,7 @@ impl Tool for GrepTool {
     }
 
     fn description(&self) -> &str {
-        "Search for a keyword across files in a directory. Matches both filenames and file contents, returning file paths, line numbers, and matching lines."
+        "Search for a pattern across files in a directory. Supports regex, file type filtering (e.g. 'rs', 'py'), and respects .gitignore."
     }
 
     fn input_schema(&self) -> Value {
@@ -40,6 +40,10 @@ impl Tool for GrepTool {
                 "path": {
                     "type": "string",
                     "description": "Directory path to search (defaults to working directory)"
+                },
+                "file_type": {
+                    "type": "string",
+                    "description": "File extension filter, e.g. 'rs', 'py', 'ts' (optional, searches all files if omitted)"
                 }
             },
             "required": ["pattern"]
@@ -60,11 +64,12 @@ impl Tool for GrepTool {
             None => ctx.working_dir.clone(),
         };
 
+        let file_type = input.get("file_type").and_then(|v| v.as_str()).map(|s| s.to_string());
         let max_results = self.config.get().grep_max_results;
         let re = Regex::new(&format!("(?i){}", regex::escape(pattern)))?;
         let pattern_owned = pattern.to_string();
 
-        tokio::task::spawn_blocking(move || grep_sync(&re, &search_dir, max_results))
+        tokio::task::spawn_blocking(move || grep_sync(&re, &search_dir, max_results, file_type.as_deref()))
             .await
             .map_err(|e| anyhow!("Search task failed: {e}"))?
             .map(|(file_count, results)| {
@@ -83,7 +88,7 @@ impl Tool for GrepTool {
     }
 }
 
-fn grep_sync(re: &Regex, search_dir: &std::path::Path, max_results: usize) -> Result<(usize, Vec<String>)> {
+fn grep_sync(re: &Regex, search_dir: &std::path::Path, max_results: usize, file_type: Option<&str>) -> Result<(usize, Vec<String>)> {
     let mut results = Vec::new();
     let mut file_count = 0;
 
@@ -113,6 +118,12 @@ fn grep_sync(re: &Regex, search_dir: &std::path::Path, max_results: usize) -> Re
 
         if !entry.file_type().is_some_and(|ft| ft.is_file()) {
             continue;
+        }
+
+        if let Some(ext) = file_type {
+            if path.extension().and_then(|e| e.to_str()) != Some(ext) {
+                continue;
+            }
         }
 
         let file = match std::fs::File::open(path) {

@@ -54,14 +54,20 @@ impl Tool for LsTool {
             .unwrap_or(1)
             .min(MAX_DEPTH as u64) as u8;
 
-        let mut output = String::new();
-        list_dir(&path, depth, 0, &mut output)?;
+        let display_path = path.display().to_string();
+        let output = tokio::task::spawn_blocking(move || {
+            let mut output = String::new();
+            list_dir(&path, depth, 0, &mut output)?;
+            Ok::<String, anyhow::Error>(output)
+        })
+        .await
+        .map_err(|e| anyhow!("Ls task failed: {e}"))??;
 
         if output.is_empty() {
-            return Ok(format!("{} (empty directory)", path.display()));
+            return Ok(format!("{} (empty directory)", display_path));
         }
 
-        Ok(format!("{}\n{}", path.display(), output))
+        Ok(format!("{}\n{}", display_path, output))
     }
 }
 
