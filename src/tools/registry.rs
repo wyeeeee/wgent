@@ -40,13 +40,14 @@ impl ToolRegistry {
         let want_all = spec.iter().any(|s| s == "all");
 
         let all_tools: Vec<(&str, Box<dyn Tool>)> = vec![
-            ("bash", Box::new(crate::tools::builtin::BashTool::new(config.clone()))),
-            ("read", Box::new(crate::tools::builtin::ReadTool)),
-            ("write", Box::new(crate::tools::builtin::WriteTool)),
-            ("edit", Box::new(crate::tools::builtin::EditTool)),
-            ("grep", Box::new(crate::tools::builtin::GrepTool::new(config.clone()))),
-            ("ls", Box::new(crate::tools::builtin::LsTool)),
-            ("subagent", Box::new(crate::tools::builtin::SubAgentTool::new(
+            ("Bash", Box::new(crate::tools::builtin::BashTool::new(config.clone()))),
+            ("Read", Box::new(crate::tools::builtin::ReadTool)),
+            ("Write", Box::new(crate::tools::builtin::WriteTool)),
+            ("Edit", Box::new(crate::tools::builtin::EditTool)),
+            ("MultiEdit", Box::new(crate::tools::builtin::MultiEditTool)),
+            ("Grep", Box::new(crate::tools::builtin::GrepTool::new(config.clone()))),
+            ("Ls", Box::new(crate::tools::builtin::LsTool)),
+            ("SubAgent", Box::new(crate::tools::builtin::SubAgentTool::new(
                 dir.to_path_buf(),
                 working_dir.to_path_buf(),
             ))),

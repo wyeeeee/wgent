@@ -10,7 +10,7 @@ pub struct ReadTool;
 #[async_trait]
 impl Tool for ReadTool {
     fn name(&self) -> &str {
-        "read"
+        "Read"
     }
 
     fn description(&self) -> &str {

@@ -1,8 +1,8 @@
 /// Generate a one-line preview of tool input
 pub fn tool_input_preview(name: &str, input: &serde_json::Value) -> String {
     match name {
-        "bash" => input["command"].as_str().unwrap_or("").to_string(),
-        "read" => {
+        "Bash" => input["command"].as_str().unwrap_or("").to_string(),
+        "Read" => {
             let path = input["path"].as_str().unwrap_or("");
             match (input.get("start_line"), input.get("end_line")) {
                 (Some(s), Some(e)) => format!("{} ({}-{})", path, s, e),
@@ -11,10 +11,25 @@ pub fn tool_input_preview(name: &str, input: &serde_json::Value) -> String {
                 _ => path.to_string(),
             }
         }
-        "write" => format!("{} ({} lines)", input["path"].as_str().unwrap_or(""),
+        "Write" => format!("{} ({} lines)", input["path"].as_str().unwrap_or(""),
             input["content"].as_str().map(|c| c.lines().count()).unwrap_or(0)),
-        "edit" => format!("{} ({}-{})", input["path"].as_str().unwrap_or(""),
-            input["start_line"], input["end_line"]),
+        "Edit" => {
+            let path = input["path"].as_str().unwrap_or("");
+            let old = input["old_string"].as_str().unwrap_or("");
+            let preview = if old.len() > 40 {
+                format!("{}…", &old[..40])
+            } else if old.is_empty() {
+                "(empty match)".to_string()
+            } else {
+                old.to_string()
+            };
+            format!("{} ({})", path, preview)
+        }
+        "MultiEdit" => {
+            let path = input["path"].as_str().unwrap_or("");
+            let count = input.get("edits").and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+            format!("{} ({} edits)", path, count)
+        }
         _ => input.to_string().chars().take(80).collect(),
     }
 }

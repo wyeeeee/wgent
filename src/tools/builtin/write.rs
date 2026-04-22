@@ -10,7 +10,7 @@ pub struct WriteTool;
 #[async_trait]
 impl Tool for WriteTool {
     fn name(&self) -> &str {
-        "write"
+        "Write"
     }
 
     fn description(&self) -> &str {

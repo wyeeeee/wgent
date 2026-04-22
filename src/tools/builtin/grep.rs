@@ -22,7 +22,7 @@ impl GrepTool {
 #[async_trait]
 impl Tool for GrepTool {
     fn name(&self) -> &str {
-        "grep"
+        "Grep"
     }
 
     fn description(&self) -> &str {

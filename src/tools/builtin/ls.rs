@@ -14,7 +14,7 @@ pub struct LsTool;
 #[async_trait]
 impl Tool for LsTool {
     fn name(&self) -> &str {
-        "ls"
+        "Ls"
     }
 
     fn description(&self) -> &str {

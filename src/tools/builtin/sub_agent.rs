@@ -23,7 +23,7 @@ impl SubAgentTool {
 #[async_trait]
 impl Tool for SubAgentTool {
     fn name(&self) -> &str {
-        "subagent"
+        "SubAgent"
     }
 
     fn description(&self) -> &str {

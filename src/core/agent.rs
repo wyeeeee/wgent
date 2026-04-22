@@ -33,7 +33,7 @@ impl Agent {
     }
 
     pub(crate) fn new_sub(dir: &Path, working_dir: &Path) -> Result<Self> {
-        Self::build(dir, working_dir, &["subagent"])
+        Self::build(dir, working_dir, &["SubAgent"])
     }
 
     fn build(dir: &Path, working_dir: &Path, exclude_tools: &[&str]) -> Result<Self> {
