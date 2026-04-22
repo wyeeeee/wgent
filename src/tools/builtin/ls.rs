@@ -127,33 +127,44 @@ fn list_dir(dir: &Path, max_depth: u8, current_depth: u8, output: &mut String) -
 
     entries.sort_by_key(|e| e.file_name());
 
-    let indent = "  ".repeat(current_depth as usize + 1);
+    let last_idx = entries.len().saturating_sub(1);
 
-    for entry in entries {
+    for (i, entry) in entries.into_iter().enumerate() {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().into_owned();
+        let is_last = i == last_idx;
+
+        let prefix = if current_depth == 0 {
+            if is_last { "└── " } else { "├── " }.to_string()
+        } else {
+            let mut s = String::new();
+            for _ in 0..current_depth {
+                s.push_str("│   ");
+            }
+            s.push_str(if is_last { "└── " } else { "├── " });
+            s
+        };
 
         if path.is_dir() {
             let agg = compute_aggregate(&path);
             let label = format!(
-                "{} ({} files, {} dirs, {} lines)",
+                "{}/ ({} files, {} dirs, {} lines)",
                 name,
                 agg.file_count,
                 agg.dir_count,
                 agg.total_lines
             );
 
+            output.push_str(&format!("{prefix}{label}\n"));
+
             if current_depth + 1 < max_depth {
-                output.push_str(&format!("{indent}{label}/\n"));
                 list_dir(&path, max_depth, current_depth + 1, output)?;
-            } else {
-                output.push_str(&format!("{indent}{label}/\n"));
             }
         } else if is_binary(&path) {
-            output.push_str(&format!("{indent}{name} (binary)\n"));
+            output.push_str(&format!("{prefix}{name} (binary)\n"));
         } else {
             let lines = count_lines(&path);
-            output.push_str(&format!("{indent}{name} ({lines} lines)\n"));
+            output.push_str(&format!("{prefix}{name} ({lines} lines)\n"));
         }
     }
 
