@@ -104,11 +104,11 @@ fn grep_sync(re: &Regex, search_dir: &std::path::Path, max_results: usize) -> Re
 
         let path = entry.path();
 
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if re.is_match(name) {
-                let rel = path.strip_prefix(search_dir).unwrap_or(path);
-                results.push(format!("{} (filename match)", rel.display()));
-            }
+        if let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && re.is_match(name)
+        {
+            let rel = path.strip_prefix(search_dir).unwrap_or(path);
+            results.push(format!("{} (filename match)", rel.display()));
         }
 
         if !entry.file_type().is_some_and(|ft| ft.is_file()) {
@@ -124,7 +124,7 @@ fn grep_sync(re: &Regex, search_dir: &std::path::Path, max_results: usize) -> Re
 
         // Quick binary check on first chunk
         let bytes_read = reader.read_until(b'\n', &mut buf).unwrap_or(0);
-        if bytes_read > 0 && buf.iter().any(|&b| b == 0) {
+        if bytes_read > 0 && buf.contains(&0) {
             continue;
         }
 

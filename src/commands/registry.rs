@@ -8,6 +8,12 @@ pub struct CommandRegistry {
     commands: HashMap<String, Box<dyn Command>>,
 }
 
+impl Default for CommandRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommandRegistry {
     pub fn new() -> Self {
         Self {
