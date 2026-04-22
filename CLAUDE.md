@@ -28,7 +28,7 @@ Key layers:
 
 - **`core/agent`** — Agent is the central hub, holding LlmProvider / ToolRegistry / CommandRegistry / PromptManager / SessionManager, sending `AgentEvent` via `mpsc` channel. Core loop in `run_loop()`: build request → send to LLM → process response (with parallel tool calls) → write session.
 - **`llm/`** — `LlmProvider` trait abstracts LLM calls, `AnthropicProvider` implements retry logic. `types.rs` defines bidirectional conversions between internal types and Anthropic API serialization types.
-- **`tools/`** — `Tool` trait (name / description / input_schema / execute), `ToolRegistry` dynamically registers based on config string. Built-in tools: bash, read, write, edit, grep, subagent (non-recursive).
+- **`tools/`** — `Tool` trait (name / description / input_schema / execute), `ToolRegistry` dynamically registers based on config string. Built-in tools: bash, read, write, edit, grep, ls, subagent (non-recursive).
 - **`commands/`** — `Command` trait, a slash command system parallel to tools (`/help`, `/new`), managed through `CommandRegistry`.
 - **`transport/`** — `Transport` trait + `AgentEvent` enum, defining the event stream protocol between Agent and UI.
 - **`config/`** — JSON config hot-reloading (`Arc<RwLock<ConfigValues>>`), auto-generates `~/.wgent/wgent.json` on first run.

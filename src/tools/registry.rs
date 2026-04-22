@@ -50,6 +50,9 @@ impl ToolRegistry {
         if (want_all || names.contains(&"grep")) && !excluded("grep") {
             registry.register(Box::new(crate::tools::builtin::GrepTool::new(config.clone())));
         }
+        if (want_all || names.contains(&"ls")) && !excluded("ls") {
+            registry.register(Box::new(crate::tools::builtin::LsTool));
+        }
         if (want_all || names.contains(&"subagent")) && !excluded("subagent") {
             registry.register(Box::new(crate::tools::builtin::SubAgentTool::new(
                 dir.to_path_buf(),
