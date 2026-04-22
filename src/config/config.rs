@@ -37,7 +37,7 @@ pub struct ConfigValues {
 
 fn default_model() -> String { "claude-sonnet-4-20250514".into() }
 fn default_base_url() -> String { "https://api.anthropic.com".into() }
-fn default_max_tokens() -> u32 { 8096 }
+fn default_max_tokens() -> u32 { 120_000 }
 fn default_command_timeout() -> u64 { 60 }
 fn default_agent_max_iterations() -> usize { 50 }
 fn default_llm_max_retries() -> usize { 10 }

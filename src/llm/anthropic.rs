@@ -33,7 +33,6 @@ impl AnthropicProvider {
 impl LlmProvider for AnthropicProvider {
     async fn chat(&self, mut request: ChatRequest) -> Result<ChatResponse, LlmError> {
         let cfg = self.config.get();
-        request.model = cfg.model.clone();
         if request.max_tokens == 0 {
             request.max_tokens = cfg.max_tokens;
         }

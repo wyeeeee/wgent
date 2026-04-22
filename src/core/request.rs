@@ -45,7 +45,7 @@ pub async fn build_request(
         .collect();
 
     Ok(ChatRequest {
-        model: String::new(),
+        model: cfg.model.clone(),
         max_tokens: cfg.max_tokens,
         system: Some(system),
         messages,
