@@ -30,9 +30,9 @@ pub struct ConfigValues {
     #[serde(default = "default_grep_max_results")]
     pub grep_max_results: usize,
     #[serde(default = "default_tools")]
-    pub tools: String,
+    pub tools: Vec<String>,
     #[serde(default = "default_commands")]
-    pub commands: String,
+    pub commands: Vec<String>,
 }
 
 fn default_model() -> String { "claude-sonnet-4-20250514".into() }
@@ -42,8 +42,8 @@ fn default_command_timeout() -> u64 { 60 }
 fn default_agent_max_iterations() -> usize { 50 }
 fn default_llm_max_retries() -> usize { 10 }
 fn default_grep_max_results() -> usize { 50 }
-fn default_tools() -> String { "all".into() }
-fn default_commands() -> String { "all".into() }
+fn default_tools() -> Vec<String> { vec!["all".into()] }
+fn default_commands() -> Vec<String> { vec!["all".into()] }
 
 impl Config {
     pub fn new(values: ConfigValues) -> Self {

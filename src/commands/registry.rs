@@ -15,10 +15,9 @@ impl CommandRegistry {
         }
     }
 
-    pub fn from_config(spec: &str) -> Self {
+    pub fn from_config(spec: &[String]) -> Self {
         let mut registry = Self::new();
-        let names = parse_spec(spec);
-        let want_all = names.contains(&"all");
+        let want_all = spec.iter().any(|s| s == "all");
 
         let all_commands: Vec<(&str, Box<dyn Command>)> = vec![
             ("help", Box::new(crate::commands::builtin::HelpCommand)),
@@ -26,7 +25,7 @@ impl CommandRegistry {
         ];
 
         for (name, cmd) in all_commands {
-            if want_all || names.contains(&name) {
+            if want_all || spec.iter().any(|s| s == name) {
                 registry.register(cmd);
             }
         }
@@ -64,11 +63,4 @@ impl CommandRegistry {
         list.sort_by_key(|(name, _)| *name);
         list
     }
-}
-
-fn parse_spec(spec: &str) -> Vec<&str> {
-    spec.split(',')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .collect()
 }

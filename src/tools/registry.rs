@@ -19,20 +19,19 @@ impl ToolRegistry {
         }
     }
 
-    pub fn from_config(config: &Config, spec: &str, dir: &Path, working_dir: &Path) -> Self {
+    pub fn from_config(config: &Config, spec: &[String], dir: &Path, working_dir: &Path) -> Self {
         Self::from_config_excluding(config, spec, &[], dir, working_dir)
     }
 
     pub fn from_config_excluding(
         config: &Config,
-        spec: &str,
+        spec: &[String],
         exclude: &[&str],
         dir: &Path,
         working_dir: &Path,
     ) -> Self {
         let mut registry = Self::new();
-        let names = parse_spec(spec);
-        let want_all = names.contains(&"all");
+        let want_all = spec.iter().any(|s| s == "all");
 
         let all_tools: Vec<(&str, Box<dyn Tool>)> = vec![
             ("bash", Box::new(crate::tools::builtin::BashTool::new(config.clone()))),
@@ -48,7 +47,7 @@ impl ToolRegistry {
         ];
 
         for (name, tool) in all_tools {
-            if (want_all || names.contains(&name)) && !exclude.contains(&name) {
+            if (want_all || spec.iter().any(|s| s == name)) && !exclude.contains(&name) {
                 registry.register(tool);
             }
         }
@@ -92,11 +91,4 @@ impl ToolRegistry {
     pub fn remove(&mut self, name: &str) {
         self.tools.remove(name);
     }
-}
-
-fn parse_spec(spec: &str) -> Vec<&str> {
-    spec.split(',')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .collect()
 }
