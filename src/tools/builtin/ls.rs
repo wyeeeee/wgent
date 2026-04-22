@@ -1,4 +1,3 @@
-use std::ffi::OsStr;
 use std::path::Path;
 
 use anyhow::{anyhow, Result};
@@ -66,23 +65,13 @@ impl Tool for LsTool {
     }
 }
 
-fn count_lines(path: &Path) -> usize {
-    if is_binary(path) {
-        return 0;
+/// Try to count lines for a file. Returns None if the file appears to be binary.
+fn try_count_lines(path: &Path) -> Option<usize> {
+    let data = std::fs::read(path).ok()?;
+    if data.contains(&0) {
+        return None;
     }
-    std::fs::read_to_string(path).map(|s| s.lines().count()).unwrap_or(0)
-}
-
-fn is_binary(path: &Path) -> bool {
-    let ext = path.extension().and_then(OsStr::to_str).unwrap_or("");
-    matches!(
-        ext,
-        "exe" | "dll" | "so" | "dylib" | "png" | "jpg" | "jpeg" | "gif" | "bmp" | "ico"
-            | "webp" | "svg" | "woff" | "woff2" | "ttf" | "otf" | "eot" | "zip" | "tar"
-            | "gz" | "bz2" | "xz" | "7z" | "rar" | "pdf" | "doc" | "docx" | "xls" | "xlsx"
-            | "ppt" | "pptx" | "mp3" | "mp4" | "avi" | "mov" | "wav" | "flac" | "ogg"
-            | "webm" | "mkv" | "class" | "o" | "obj" | "pyc" | "wasm"
-    )
+    Some(data.iter().filter(|&&b| b == b'\n').count() + 1)
 }
 
 fn list_dir(dir: &Path, max_depth: u8, current_depth: u8, output: &mut String) -> Result<()> {
@@ -116,10 +105,7 @@ fn list_dir(dir: &Path, max_depth: u8, current_depth: u8, output: &mut String) -
             if current_depth + 1 < max_depth {
                 list_dir(&path, max_depth, current_depth + 1, output)?;
             }
-        } else if is_binary(&path) {
-            output.push_str(&format!("{prefix}{name} (binary)\n"));
-        } else {
-            let lines = count_lines(&path);
+        } else if let Some(lines) = try_count_lines(&path) {
             output.push_str(&format!("{prefix}{name} ({lines} lines)\n"));
         }
     }
