@@ -30,8 +30,7 @@ impl TerminalTransport {
                     None => (rest, None),
                 };
 
-                let cmds = agent.commands();
-                let commands = cmds.read().await;
+                let commands = agent.commands();
                 if commands.is_command(cmd_name) {
                     let ctx = CommandContext {
                         session_manager: agent.session_manager(),
@@ -130,7 +129,12 @@ impl Transport for TerminalTransport {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    wgent::logging::init("info");
+    {
+        use tracing_subscriber::EnvFilter;
+        let filter = EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| EnvFilter::new("wgent=info"));
+        tracing_subscriber::fmt().with_env_filter(filter).init();
+    }
 
     let data_dir = wgent::config::Config::default_dir();
     let working_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));

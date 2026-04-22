@@ -57,8 +57,10 @@ impl Tool for SubAgentTool {
 
         let mut last_text = None;
         while let Some(event) = rx.recv().await {
-            if let Some(tx) = &ctx.events {
-                let _ = tx.send(event.clone()).await;
+            if let Some(tx) = &ctx.events
+                && tx.send(event.clone()).await.is_err()
+            {
+                break;
             }
             if let AgentEvent::TextComplete(text) = event {
                 last_text = Some(text);

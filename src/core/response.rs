@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use serde_json::Value;
-use tokio::sync::RwLock;
 use tokio::sync::mpsc::Sender;
 use tracing::{error, warn};
 
@@ -30,7 +29,7 @@ struct ToolCallResult {
 pub async fn process_response(
     response: ChatResponse,
     session: &mut Session,
-    tools: &Arc<RwLock<ToolRegistry>>,
+    tools: &Arc<ToolRegistry>,
     prompts: &Arc<PromptManager>,
     tx: &Sender<AgentEvent>,
 ) -> bool {
@@ -41,22 +40,30 @@ pub async fn process_response(
     for block in response.content {
         match block {
             ContentBlock::Thinking { text } => {
-                let _ = tx.send(AgentEvent::Thinking(text.clone())).await;
+                if tx.send(AgentEvent::Thinking(text.clone())).await.is_err() {
+                    return false;
+                }
                 assistant_content.push(MessageContent::Thinking { text });
             }
             ContentBlock::Text { text } => {
-                let _ = tx.send(AgentEvent::TextComplete(text.clone())).await;
+                if tx.send(AgentEvent::TextComplete(text.clone())).await.is_err() {
+                    return false;
+                }
                 assistant_content.push(MessageContent::Text { text });
             }
             ContentBlock::ToolUse { id, name, input } => {
                 let input_preview = tool_input_preview(&name, &input);
-                let _ = tx
+                if tx
                     .send(AgentEvent::ToolCallStart {
                         id: id.clone(),
                         name: name.clone(),
                         input_preview,
                     })
-                    .await;
+                    .await
+                    .is_err()
+                {
+                    return false;
+                }
 
                 tool_calls.push(ToolCall {
                     id,
@@ -85,10 +92,7 @@ pub async fn process_response(
                     working_dir,
                     events: Some(tx.clone()),
                 };
-                let result = {
-                    let guard = tools.read().await;
-                    guard.execute(&tc.name, tc.input.clone(), &ctx).await
-                };
+                let result = tools.execute(&tc.name, tc.input.clone(), &ctx).await;
 
                 let output = match result {
                     Ok(o) => o,
@@ -100,13 +104,17 @@ pub async fn process_response(
                     }
                 };
 
-                let _ = tx
+                if tx
                     .send(AgentEvent::ToolCallEnd {
                         id: tc.id.clone(),
                         name: tc.name.clone(),
                         result: output.clone(),
                     })
-                    .await;
+                    .await
+                    .is_err()
+                {
+                    warn!("Channel closed while sending ToolCallEnd for '{}'", tc.name);
+                }
 
                 ToolCallResult {
                     id: tc.id,

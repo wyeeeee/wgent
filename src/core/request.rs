@@ -1,5 +1,4 @@
 use anyhow::Result;
-use tokio::sync::RwLock;
 
 use crate::config::ConfigValues;
 use crate::core::message::MessageContent;
@@ -11,11 +10,11 @@ use crate::tools::ToolRegistry;
 pub async fn build_request(
     session: &Session,
     prompts: &PromptManager,
-    tools: &RwLock<ToolRegistry>,
+    tools: &ToolRegistry,
     cfg: &ConfigValues,
 ) -> Result<ChatRequest> {
     let system = prompts.render_system("Wgent", None::<&str>, &[], &session.working_dir)?;
-    let tool_defs = tools.read().await.definitions();
+    let tool_defs = tools.definitions();
 
     let messages = session
         .messages

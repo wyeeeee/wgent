@@ -86,7 +86,7 @@ impl Tool for EditTool {
 
         if let Some(expected) = old_content {
             let actual: String = lines[start_line - 1..end_line].join(line_ending);
-            if actual.trim() != expected.trim() {
+            if actual != expected {
                 return Err(anyhow!(
                     "Content mismatch (lines {}-{}):\n--- expected ---\n{}\n--- actual ---\n{}",
                     start_line, end_line, expected, actual

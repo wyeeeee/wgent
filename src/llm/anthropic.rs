@@ -51,8 +51,8 @@ impl LlmProvider for AnthropicProvider {
                         return Err(e);
                     }
                     let delay = match e.suggested_delay_ms() {
-                        Some(ms) => Duration::from_millis(ms),
-                        None => Duration::from_millis(500 * 2u64.pow(attempt as u32 - 1)),
+                        Some(ms) => Duration::from_millis(ms.min(30_000)),
+                        None => Duration::from_millis((500 * 2u64.pow(attempt as u32 - 1)).min(10_000)),
                     };
                     warn!(
                         "LLM request failed (attempt {attempt}/{max_retries}): {e}, retrying in {}ms",

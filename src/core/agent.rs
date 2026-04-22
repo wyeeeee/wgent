@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
-use tokio::sync::RwLock;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::error;
 
@@ -20,8 +19,8 @@ use crate::transport::TokenUsage;
 
 pub struct Agent {
     llm: Arc<dyn LlmProvider>,
-    tools: Arc<RwLock<ToolRegistry>>,
-    commands: Arc<RwLock<CommandRegistry>>,
+    tools: Arc<ToolRegistry>,
+    commands: Arc<CommandRegistry>,
     prompts: Arc<PromptManager>,
     sessions: SessionManager,
     config: Config,
@@ -50,13 +49,13 @@ impl Agent {
 
         let llm = Arc::new(crate::llm::AnthropicProvider::new(config.clone()));
         let prompts = Arc::new(PromptManager::new()?);
-        let tools = ToolRegistry::from_config_excluding(&config, &cfg.tools, exclude_tools, dir, working_dir);
-        let commands = CommandRegistry::from_config(&cfg.commands);
+        let tools = Arc::new(ToolRegistry::from_config_excluding(&config, &cfg.tools, exclude_tools, dir, working_dir));
+        let commands = Arc::new(CommandRegistry::from_config(&cfg.commands));
 
         Ok(Self {
             llm,
-            tools: Arc::new(RwLock::new(tools)),
-            commands: Arc::new(RwLock::new(commands)),
+            tools,
+            commands,
             prompts,
             sessions: SessionManager::new(dir.join("sessions")),
             config,
@@ -68,7 +67,7 @@ impl Agent {
         self.sessions.clone()
     }
 
-    pub fn commands(&self) -> Arc<RwLock<CommandRegistry>> {
+    pub fn commands(&self) -> Arc<CommandRegistry> {
         self.commands.clone()
     }
 
@@ -107,10 +106,14 @@ impl Agent {
         let sessions = self.sessions.clone();
 
         tokio::spawn(async move {
-            let usage = run_loop(llm, tools, prompts, config, &mut *guard, &tx).await;
+            let usage = run_loop(llm, tools, prompts, config, &mut guard, &tx).await;
             drop(guard);
-            let _ = tx.send(AgentEvent::Done { usage: Some(usage) }).await;
-            let _ = sessions.save(&session).await;
+            if tx.send(AgentEvent::Done { usage: Some(usage) }).await.is_err() {
+                error!("Failed to send Done event: channel closed");
+            }
+            if let Err(e) = sessions.save(&session).await {
+                error!("Failed to save session: {e}");
+            }
         });
 
         Ok((sid, rx))
@@ -119,7 +122,7 @@ impl Agent {
 
 async fn run_loop(
     llm: Arc<dyn LlmProvider>,
-    tools: Arc<RwLock<ToolRegistry>>,
+    tools: Arc<ToolRegistry>,
     prompts: Arc<PromptManager>,
     config: Config,
     session: &mut Session,
@@ -132,14 +135,14 @@ async fn run_loop(
         iterations += 1;
         let cfg = config.get();
         if iterations > cfg.agent_max_iterations {
-            let _ = tx.send(AgentEvent::Error("Maximum iteration limit reached".into())).await;
+            error!("Maximum iteration limit reached");
             return total_usage;
         }
 
-        let request = match build_request(session, &prompts, &tools, &cfg).await {
+        let request = match build_request(session, &prompts, &tools, cfg).await {
             Ok(r) => r,
             Err(e) => {
-                let _ = tx.send(AgentEvent::Error(format!("Failed to build request: {e}"))).await;
+                error!("Failed to build request: {e}");
                 return total_usage;
             }
         };
@@ -148,7 +151,6 @@ async fn run_loop(
             Ok(r) => r,
             Err(e) => {
                 error!("LLM request failed: {e}");
-                let _ = tx.send(AgentEvent::Error(format!("LLM request failed: {e}"))).await;
                 return total_usage;
             }
         };
