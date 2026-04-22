@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
+use uuid::Uuid;
 
 use crate::core::message::Message;
 
@@ -54,7 +54,6 @@ pub struct SessionManager {
 struct SessionManagerInner {
     cache: RwLock<HashMap<String, Arc<RwLock<Session>>>>,
     data_dir: PathBuf,
-    counter: AtomicU64,
 }
 
 impl SessionManager {
@@ -64,18 +63,12 @@ impl SessionManager {
             inner: Arc::new(SessionManagerInner {
                 cache: RwLock::new(HashMap::new()),
                 data_dir,
-                counter: AtomicU64::new(0),
             }),
         }
     }
 
     pub fn generate_id(&self) -> String {
-        let count = self.inner.counter.fetch_add(1, Ordering::Relaxed);
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis();
-        format!("{:08x}{:04x}", ts as u64, count & 0xFFFF)
+        Uuid::new_v4().to_string()
     }
 
     pub async fn get_or_create(&self, id: &str, working_dir: PathBuf) -> Result<Arc<RwLock<Session>>> {

@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone)]
 pub struct Config {
-    inner: Arc<RwLock<ConfigValues>>,
+    inner: Arc<ConfigValues>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -48,17 +48,12 @@ fn default_commands() -> String { "all".into() }
 impl Config {
     pub fn new(values: ConfigValues) -> Self {
         Self {
-            inner: Arc::new(RwLock::new(values)),
+            inner: Arc::new(values),
         }
     }
 
     pub fn get(&self) -> ConfigValues {
-        self.inner.read().unwrap().clone()
-    }
-
-    #[allow(dead_code)]
-    pub fn update(&self, values: ConfigValues) {
-        *self.inner.write().unwrap() = values;
+        (*self.inner).clone()
     }
 
     pub fn load(dir: &Path) -> Result<Self> {

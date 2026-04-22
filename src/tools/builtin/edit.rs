@@ -67,8 +67,11 @@ impl Tool for EditTool {
             .await
             .map_err(|e| anyhow!("Failed to read file {}: {e}", path.display()))?;
 
+        let uses_crlf = raw.contains("\r\n");
+        let line_ending = if uses_crlf { "\r\n" } else { "\n" };
+
         let mut lines: Vec<String> = raw.lines().map(|l| l.to_string()).collect();
-        let trailing_newline = raw.ends_with('\n');
+        let trailing_newline = raw.ends_with('\n') || raw.ends_with("\r\n");
         let total = lines.len();
 
         if start_line == 0 || start_line > total {
@@ -82,7 +85,7 @@ impl Tool for EditTool {
         }
 
         if let Some(expected) = old_content {
-            let actual: String = lines[start_line - 1..end_line].join("\n");
+            let actual: String = lines[start_line - 1..end_line].join(line_ending);
             if actual.trim() != expected.trim() {
                 return Err(anyhow!(
                     "Content mismatch (lines {}-{}):\n--- expected ---\n{}\n--- actual ---\n{}",
@@ -91,7 +94,7 @@ impl Tool for EditTool {
             }
         }
 
-        let old_lines: String = lines[start_line - 1..end_line].join("\n");
+        let old_lines: String = lines[start_line - 1..end_line].join(line_ending);
 
         let replacement: Vec<String> = if new_content.is_empty() {
             Vec::new()
@@ -100,9 +103,9 @@ impl Tool for EditTool {
         };
         lines.splice(start_line - 1..end_line, replacement);
 
-        let mut result = lines.join("\n");
+        let mut result = lines.join(line_ending);
         if trailing_newline {
-            result.push('\n');
+            result.push_str(line_ending);
         }
         tokio::fs::write(&path, &result)
             .await

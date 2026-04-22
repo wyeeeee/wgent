@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use ignore::WalkBuilder;
 use regex::Regex;
 use serde_json::{json, Value};
+use std::io::{BufRead, BufReader};
 
 use crate::config::Config;
 use crate::tools::tool::{Tool, ToolContext};
@@ -110,27 +111,55 @@ fn grep_sync(re: &Regex, search_dir: &std::path::Path, max_results: usize) -> Re
             }
         }
 
-        if !entry.file_type().map_or(false, |ft| ft.is_file()) {
+        if !entry.file_type().is_some_and(|ft| ft.is_file()) {
             continue;
         }
 
-        let content = match std::fs::read_to_string(path) {
-            Ok(c) => c,
+        let file = match std::fs::File::open(path) {
+            Ok(f) => f,
             Err(_) => continue,
         };
+        let mut reader = BufReader::new(file);
+        let mut buf = Vec::new();
 
-        if content.bytes().any(|b| b == 0) {
+        // Quick binary check on first chunk
+        let bytes_read = reader.read_until(b'\n', &mut buf).unwrap_or(0);
+        if bytes_read > 0 && buf.iter().any(|&b| b == 0) {
             continue;
         }
 
         let rel = path.strip_prefix(search_dir).unwrap_or(path);
         let mut file_matched = false;
+        let mut line_num = 0;
 
-        for (i, line) in content.lines().enumerate() {
-            if re.is_match(line) {
-                results.push(format!("{}:{} | {}", rel.display(), i + 1, line.trim_end()));
-                file_matched = true;
+        loop {
+            line_num += 1;
+            if line_num == 1 {
+                // Process the first line we already read during binary check
+                if let Ok(text) = std::str::from_utf8(&buf) {
+                    let line = text.trim_end_matches(['\r', '\n']);
+                    if re.is_match(line) {
+                        results.push(format!("{}:{} | {}", rel.display(), line_num, line.trim_end()));
+                        file_matched = true;
+                    }
+                }
+            } else {
+                buf.clear();
+                match reader.read_until(b'\n', &mut buf) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        if let Ok(text) = std::str::from_utf8(&buf) {
+                            let line = text.trim_end_matches(['\r', '\n']);
+                            if re.is_match(line) {
+                                results.push(format!("{}:{} | {}", rel.display(), line_num, line.trim_end()));
+                                file_matched = true;
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
             }
+
             if results.len() >= max_results {
                 break;
             }
