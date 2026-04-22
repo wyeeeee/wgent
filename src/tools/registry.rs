@@ -33,31 +33,24 @@ impl ToolRegistry {
         let mut registry = Self::new();
         let names = parse_spec(spec);
         let want_all = names.contains(&"all");
-        let excluded = |n: &str| exclude.contains(&n);
 
-        if (want_all || names.contains(&"bash")) && !excluded("bash") {
-            registry.register(Box::new(crate::tools::builtin::BashTool::new(config.clone())));
-        }
-        if (want_all || names.contains(&"read")) && !excluded("read") {
-            registry.register(Box::new(crate::tools::builtin::ReadTool));
-        }
-        if (want_all || names.contains(&"write")) && !excluded("write") {
-            registry.register(Box::new(crate::tools::builtin::WriteTool));
-        }
-        if (want_all || names.contains(&"edit")) && !excluded("edit") {
-            registry.register(Box::new(crate::tools::builtin::EditTool));
-        }
-        if (want_all || names.contains(&"grep")) && !excluded("grep") {
-            registry.register(Box::new(crate::tools::builtin::GrepTool::new(config.clone())));
-        }
-        if (want_all || names.contains(&"ls")) && !excluded("ls") {
-            registry.register(Box::new(crate::tools::builtin::LsTool));
-        }
-        if (want_all || names.contains(&"subagent")) && !excluded("subagent") {
-            registry.register(Box::new(crate::tools::builtin::SubAgentTool::new(
+        let all_tools: Vec<(&str, Box<dyn Tool>)> = vec![
+            ("bash", Box::new(crate::tools::builtin::BashTool::new(config.clone()))),
+            ("read", Box::new(crate::tools::builtin::ReadTool)),
+            ("write", Box::new(crate::tools::builtin::WriteTool)),
+            ("edit", Box::new(crate::tools::builtin::EditTool)),
+            ("grep", Box::new(crate::tools::builtin::GrepTool::new(config.clone()))),
+            ("ls", Box::new(crate::tools::builtin::LsTool)),
+            ("subagent", Box::new(crate::tools::builtin::SubAgentTool::new(
                 dir.to_path_buf(),
                 working_dir.to_path_buf(),
-            )));
+            ))),
+        ];
+
+        for (name, tool) in all_tools {
+            if (want_all || names.contains(&name)) && !exclude.contains(&name) {
+                registry.register(tool);
+            }
         }
 
         registry

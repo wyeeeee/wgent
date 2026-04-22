@@ -20,11 +20,15 @@ impl CommandRegistry {
         let names = parse_spec(spec);
         let want_all = names.contains(&"all");
 
-        if want_all || names.contains(&"new") {
-            registry.register(Box::new(crate::commands::builtin::NewCommand));
-        }
-        if want_all || names.contains(&"help") {
-            registry.register(Box::new(crate::commands::builtin::HelpCommand));
+        let all_commands: Vec<(&str, Box<dyn Command>)> = vec![
+            ("help", Box::new(crate::commands::builtin::HelpCommand)),
+            ("new", Box::new(crate::commands::builtin::NewCommand)),
+        ];
+
+        for (name, cmd) in all_commands {
+            if want_all || names.contains(&name) {
+                registry.register(cmd);
+            }
         }
 
         registry
