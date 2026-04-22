@@ -1,6 +1,20 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
+/// Accumulated token usage across LLM calls
+#[derive(Debug, Clone, Default)]
+pub struct TokenUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+}
+
+impl TokenUsage {
+    pub fn accumulate(&mut self, input: u32, output: u32) {
+        self.input_tokens += input as u64;
+        self.output_tokens += output as u64;
+    }
+}
+
 /// Agent → UI event stream
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -17,8 +31,8 @@ pub enum AgentEvent {
     ToolCallEnd { id: String, name: String, result: String },
     /// Error message
     Error(String),
-    /// Conversation turn ended
-    Done,
+    /// Conversation turn ended with usage summary
+    Done { usage: Option<TokenUsage> },
 }
 
 /// Transport layer abstraction: bridge between Agent and UI

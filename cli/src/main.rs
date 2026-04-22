@@ -113,8 +113,15 @@ impl Transport for TerminalTransport {
             AgentEvent::Error(msg) => {
                 println!("{} {}", "✗".red(), msg.red());
             }
-            AgentEvent::Done => {
+            AgentEvent::Done { usage } => {
                 println!("{}", "─".repeat(40).dimmed());
+                if let Some(u) = usage {
+                    println!(
+                        "  {} tokens in, {} tokens out",
+                        u.input_tokens.to_string().dimmed(),
+                        u.output_tokens.to_string().dimmed(),
+                    );
+                }
             }
         }
         Ok(())

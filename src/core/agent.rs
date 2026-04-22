@@ -16,6 +16,7 @@ use crate::llm::provider::LlmProvider;
 use crate::prompt::PromptManager;
 use crate::tools::ToolRegistry;
 use crate::transport::AgentEvent;
+use crate::transport::TokenUsage;
 
 pub struct Agent {
     llm: Arc<dyn LlmProvider>,
@@ -125,9 +126,9 @@ impl Agent {
         let sessions = self.sessions.clone();
 
         tokio::spawn(async move {
-            run_loop(llm, tools, prompts, config, &mut *guard, &tx).await;
+            let usage = run_loop(llm, tools, prompts, config, &mut *guard, &tx).await;
             drop(guard);
-            let _ = tx.send(AgentEvent::Done).await;
+            let _ = tx.send(AgentEvent::Done { usage: Some(usage) }).await;
             let _ = sessions.save(&session).await;
         });
 
@@ -142,22 +143,23 @@ async fn run_loop(
     config: Config,
     session: &mut Session,
     tx: &Sender<AgentEvent>,
-) {
+) -> TokenUsage {
     let mut iterations = 0;
+    let mut total_usage = TokenUsage::default();
 
     loop {
         iterations += 1;
         let cfg = config.get();
         if iterations > cfg.agent_max_iterations {
             let _ = tx.send(AgentEvent::Error("Maximum iteration limit reached".into())).await;
-            return;
+            return total_usage;
         }
 
         let request = match build_request(session, &prompts, &tools, &cfg).await {
             Ok(r) => r,
             Err(e) => {
                 let _ = tx.send(AgentEvent::Error(format!("Failed to build request: {e}"))).await;
-                return;
+                return total_usage;
             }
         };
 
@@ -166,12 +168,14 @@ async fn run_loop(
             Err(e) => {
                 error!("LLM request failed: {e}");
                 let _ = tx.send(AgentEvent::Error(format!("LLM request failed: {e}"))).await;
-                return;
+                return total_usage;
             }
         };
 
+        total_usage.accumulate(response.usage.input_tokens, response.usage.output_tokens);
+
         if !process_response(response, session, &tools, &prompts, tx).await {
-            return;
+            return total_usage;
         }
     }
 }
