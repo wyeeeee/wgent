@@ -30,6 +30,14 @@ pub struct Agent {
 
 impl Agent {
     pub fn new(dir: &Path, working_dir: &Path) -> Result<Self> {
+        Self::build(dir, working_dir, &[])
+    }
+
+    pub(crate) fn new_sub(dir: &Path, working_dir: &Path) -> Result<Self> {
+        Self::build(dir, working_dir, &["subagent"])
+    }
+
+    fn build(dir: &Path, working_dir: &Path, exclude_tools: &[&str]) -> Result<Self> {
         let config = Config::load(dir)?;
         let cfg = config.get();
 
@@ -42,40 +50,13 @@ impl Agent {
 
         let llm = Arc::new(crate::llm::AnthropicProvider::new(config.clone()));
         let prompts = Arc::new(PromptManager::new()?);
-        let tools = ToolRegistry::from_config(&config, &cfg.tools, dir, working_dir);
-
+        let tools = ToolRegistry::from_config_excluding(&config, &cfg.tools, exclude_tools, dir, working_dir);
         let commands = CommandRegistry::from_config(&cfg.commands);
-        let sessions = SessionManager::new(dir.join("sessions"));
 
         Ok(Self {
             llm,
             tools: Arc::new(RwLock::new(tools)),
             commands: Arc::new(RwLock::new(commands)),
-            prompts,
-            sessions,
-            config,
-            working_dir: working_dir.to_path_buf(),
-        })
-    }
-
-    pub(crate) fn new_sub(dir: &Path, working_dir: &Path) -> Result<Self> {
-        let config = Config::load(dir)?;
-        let cfg = config.get();
-
-        if cfg.api_key.is_empty() {
-            bail!("API key not set");
-        }
-
-        let llm = Arc::new(crate::llm::AnthropicProvider::new(config.clone()));
-        let prompts = Arc::new(PromptManager::new()?);
-        let tools = ToolRegistry::from_config_excluding(
-            &config, &cfg.tools, &["subagent"], dir, working_dir,
-        );
-
-        Ok(Self {
-            llm,
-            tools: Arc::new(RwLock::new(tools)),
-            commands: Arc::new(RwLock::new(CommandRegistry::from_config(&cfg.commands))),
             prompts,
             sessions: SessionManager::new(dir.join("sessions")),
             config,
