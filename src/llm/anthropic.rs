@@ -1,14 +1,15 @@
-use anyhow::{anyhow, Result};
+use std::time::Duration;
+
 use async_trait::async_trait;
 use reqwest::Client;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
+use crate::llm::error::LlmError;
 use crate::llm::provider::LlmProvider;
 use crate::llm::types::{ChatRequest, ChatResponse};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
-const RETRY_INTERVAL_SECS: u64 = 5;
 
 pub struct AnthropicProvider {
     client: Client,
@@ -30,7 +31,7 @@ impl AnthropicProvider {
 
 #[async_trait]
 impl LlmProvider for AnthropicProvider {
-    async fn chat(&self, mut request: ChatRequest) -> Result<ChatResponse> {
+    async fn chat(&self, mut request: ChatRequest) -> Result<ChatResponse, LlmError> {
         let cfg = self.config.get();
         request.model = cfg.model.clone();
         if request.max_tokens == 0 {
@@ -46,18 +47,27 @@ impl LlmProvider for AnthropicProvider {
             attempt += 1;
             match self.send_request(&request).await {
                 Ok(resp) => return Ok(resp),
-                Err(e) if attempt <= max_retries => {
-                    warn!("LLM request failed (attempt {attempt}/{max_retries}): {e}, retrying in {RETRY_INTERVAL_SECS}s");
-                    tokio::time::sleep(std::time::Duration::from_secs(RETRY_INTERVAL_SECS)).await;
+                Err(e) => {
+                    if !e.is_retryable() || attempt > max_retries {
+                        return Err(e);
+                    }
+                    let delay = match e.suggested_delay_ms() {
+                        Some(ms) => Duration::from_millis(ms),
+                        None => Duration::from_millis(500 * 2u64.pow(attempt as u32 - 1)),
+                    };
+                    warn!(
+                        "LLM request failed (attempt {attempt}/{max_retries}): {e}, retrying in {}ms",
+                        delay.as_millis()
+                    );
+                    tokio::time::sleep(delay).await;
                 }
-                Err(e) => return Err(e),
             }
         }
     }
 }
 
 impl AnthropicProvider {
-    async fn send_request(&self, request: &ChatRequest) -> Result<ChatResponse> {
+    async fn send_request(&self, request: &ChatRequest) -> Result<ChatResponse, LlmError> {
         let cfg = self.config.get();
         let body = request.to_api();
         debug!("Sending request to Anthropic API, model={}, thinking_budget={}", request.model, request.thinking_budget);
@@ -71,26 +81,26 @@ impl AnthropicProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| anyhow!("API request failed: {e}"))?;
+            .map_err(|e| LlmError::Network { message: e.to_string() })?;
 
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("API error: status={}, body={}", status.as_u16(), text));
+            return Err(classify_http_error(status.as_u16(), &text));
         }
 
         let raw = resp
             .text()
             .await
-            .map_err(|e| anyhow!("Failed to read response: {e}"))?;
+            .map_err(|e| LlmError::Network { message: e.to_string() })?;
 
         debug!("Raw API response: {raw}");
 
         let api_resp: crate::llm::types::ApiResponse = serde_json::from_str(&raw)
-            .map_err(|e| anyhow!("Failed to parse response: {e}"))?;
+            .map_err(|e| LlmError::Parse { message: format!("Failed to parse response: {e}") })?;
 
         let chat_response = ChatResponse::try_from(api_resp)
-            .map_err(|e| anyhow!("Failed to convert response: {e}"))?;
+            .map_err(|e| LlmError::Parse { message: format!("Failed to convert response: {e}") })?;
 
         info!(
             "LLM response: stop_reason={:?}, input_tokens={}, output_tokens={}",
@@ -100,5 +110,33 @@ impl AnthropicProvider {
         );
 
         Ok(chat_response)
+    }
+}
+
+fn classify_http_error(status: u16, body: &str) -> LlmError {
+    match status {
+        429 => {
+            let retry_after_ms = None; // Anthropic doesn't use retry-after header typically
+            LlmError::RateLimited {
+                retry_after_ms,
+                message: format!("status=429, body={body}"),
+            }
+        }
+        401 | 403 => LlmError::Authentication {
+            message: format!("status={status}, body={body}"),
+        },
+        400 => LlmError::BadRequest {
+            message: format!("status=400, body={body}"),
+        },
+        404 => LlmError::NotFound {
+            message: format!("status=404, body={body}"),
+        },
+        _ if status >= 500 => LlmError::ServerError {
+            status,
+            message: body.to_string(),
+        },
+        _ => LlmError::BadRequest {
+            message: format!("status={status}, body={body}"),
+        },
     }
 }
