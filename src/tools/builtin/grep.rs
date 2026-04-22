@@ -25,7 +25,7 @@ impl Tool for GrepTool {
     }
 
     fn description(&self) -> &str {
-        "在指定目录下全局搜索关键词。同时匹配文件名和文件内容，返回文件路径、行号和匹配行。"
+        "Search for a keyword across files in a directory. Matches both filenames and file contents, returning file paths, line numbers, and matching lines."
     }
 
     fn input_schema(&self) -> Value {
@@ -34,11 +34,11 @@ impl Tool for GrepTool {
             "properties": {
                 "pattern": {
                     "type": "string",
-                    "description": "搜索关键词或正则表达式"
+                    "description": "Search keyword or regex pattern"
                 },
                 "path": {
                     "type": "string",
-                    "description": "搜索目录路径（默认为工作目录）"
+                    "description": "Directory path to search (defaults to working directory)"
                 }
             },
             "required": ["pattern"]
@@ -48,10 +48,10 @@ impl Tool for GrepTool {
     async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<String> {
         let pattern = input["pattern"]
             .as_str()
-            .ok_or_else(|| anyhow!("缺少 pattern 参数"))?;
+            .ok_or_else(|| anyhow!("Missing 'pattern' parameter"))?;
 
         if pattern.trim().is_empty() {
-            return Err(anyhow!("pattern 不能为空"));
+            return Err(anyhow!("Pattern cannot be empty"));
         }
 
         let search_dir = match input.get("path").and_then(|v| v.as_str()) {
@@ -65,13 +65,13 @@ impl Tool for GrepTool {
 
         tokio::task::spawn_blocking(move || grep_sync(&re, &search_dir, max_results))
             .await
-            .map_err(|e| anyhow!("搜索任务失败: {e}"))?
+            .map_err(|e| anyhow!("Search task failed: {e}"))?
             .map(|(file_count, results)| {
                 if results.is_empty() {
-                    format!("未找到匹配 \"{}\" 的结果", pattern_owned)
+                    format!("No matches found for \"{}\"", pattern_owned)
                 } else {
                     format!(
-                        "搜索 \"{}\" ({} 个文件, {} 条结果):\n{}",
+                        "Results for \"{}\" ({} files, {} matches):\n{}",
                         pattern_owned,
                         file_count,
                         results.len(),
@@ -92,7 +92,7 @@ fn grep_sync(re: &Regex, search_dir: &std::path::Path, max_results: usize) -> Re
         .build()
     {
         if results.len() >= max_results {
-            results.push(format!("... (已达到 {} 条上限)", max_results));
+            results.push(format!("... (reached limit of {} results)", max_results));
             break;
         }
 
@@ -106,7 +106,7 @@ fn grep_sync(re: &Regex, search_dir: &std::path::Path, max_results: usize) -> Re
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             if re.is_match(name) {
                 let rel = path.strip_prefix(search_dir).unwrap_or(path);
-                results.push(format!("{} (文件名匹配)", rel.display()));
+                results.push(format!("{} (filename match)", rel.display()));
             }
         }
 

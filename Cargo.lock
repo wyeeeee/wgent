@@ -2082,6 +2082,7 @@ dependencies = [
  "tera",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

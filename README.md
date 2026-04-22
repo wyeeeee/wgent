@@ -1,19 +1,19 @@
 # Wgent
 
-基于 Rust 的 AI Agent 框架。
+A Rust-based AI Agent framework powered by the Anthropic Messages API, with tool calling, sub-agent support, session persistence, and an extensible command system.
 
-## 快速开始
+## Quick Start
 
 ```bash
 cargo build --release
 ./target/release/wgent-cli
 ```
 
-首次运行自动在 `~/.wgent/` 创建 `wgent.json` 配置文件，编辑填入 API key 即可使用。
+On first run, a configuration file is automatically created at `~/.wgent/wgent.json`. Edit it to set your API key.
 
-## 配置
+## Configuration
 
-配置文件位于 `~/.wgent/wgent.json`，支持热加载：
+Configuration file located at `~/.wgent/wgent.json`, supports hot-reloading:
 
 ```json
 {
@@ -31,28 +31,29 @@ cargo build --release
 }
 ```
 
-- `tools` / `commands`：`"all"` 启用全部，或逗号分隔指定（如 `"read,write,bash"`）
-- 也可通过 `.env` 设置 `ANTHROPIC_API_KEY`
+- `tools` / `commands`: Set to `"all"` to enable everything, or comma-separated list (e.g. `"read,write,bash"`)
+- API key can also be set via `.env` with `ANTHROPIC_API_KEY`
 
-## 目录结构
+## Directory Layout
 
 ```
 ~/.wgent/
-  wgent.json       配置
-  sessions/        会话持久化
+  wgent.json       Configuration
+  sessions/        Session persistence
 ```
 
-## 架构
+## Architecture
 
 ```
-cli/               终端 UI 层（Transport）
+cli/               Terminal UI layer (Transport)
 src/
-  config/          JSON 配置系统
-  core/            Agent 核心（自举构造）
-  llm/             LLM Provider 抽象
-  tools/           工具注册与内置工具
-  commands/        Slash 命令
-  prompt/          Tera 模板提示词
-  transport/       事件流传输
-  utils/           工具函数
+  config/          JSON configuration system
+  core/            Agent core (self-bootstrapping constructor)
+  llm/             LLM provider abstraction
+  tools/           Tool registry and built-in tools
+  commands/        Slash command system
+  prompt/          Tera template prompts
+  transport/       Event stream transport
+  logging/         Logging initialization
+  utils/           Utility functions
 ```

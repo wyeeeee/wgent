@@ -47,7 +47,7 @@ impl CommandRegistry {
         let cmd = self
             .commands
             .get(name)
-            .ok_or_else(|| anyhow!("未知命令: /{name}"))?;
+            .ok_or_else(|| anyhow!("Unknown command: /{name}"))?;
         cmd.execute(ctx, args).await
     }
 

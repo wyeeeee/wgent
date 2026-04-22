@@ -24,7 +24,7 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &str {
-        "在系统 shell 中执行命令（Windows: pwsh, Unix: bash），工作目录为当前会话的工作目录。有超时限制。"
+        "Execute a command in the system shell (Windows: pwsh, Unix: bash). Uses the session working directory. Subject to timeout."
     }
 
     fn input_schema(&self) -> Value {
@@ -33,7 +33,7 @@ impl Tool for BashTool {
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "要执行的 shell 命令"
+                    "description": "The shell command to execute"
                 }
             },
             "required": ["command"]
@@ -43,10 +43,10 @@ impl Tool for BashTool {
     async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<String> {
         let command = input["command"]
             .as_str()
-            .ok_or_else(|| anyhow!("缺少 command 参数"))?;
+            .ok_or_else(|| anyhow!("Missing 'command' parameter"))?;
 
         if command.trim().is_empty() {
-            return Err(anyhow!("命令不能为空"));
+            return Err(anyhow!("Command cannot be empty"));
         }
 
         let timeout_secs = self.config.get().command_timeout;
@@ -56,8 +56,8 @@ impl Tool for BashTool {
             shell_command(command, &ctx.working_dir),
         )
         .await
-        .map_err(|_| anyhow!("命令执行超时（{}秒）", timeout_secs))?
-        .map_err(|e| anyhow!("启动命令失败: {e}"))?;
+        .map_err(|_| anyhow!("Command timed out ({}s)", timeout_secs))?
+        .map_err(|e| anyhow!("Failed to start command: {e}"))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -75,7 +75,7 @@ impl Tool for BashTool {
             result.push_str(&format!("[stderr]\n{stderr}"));
         }
         if exit_code != 0 {
-            result.push_str(&format!("\n[退出码: {exit_code}]"));
+            result.push_str(&format!("\n[exit code: {exit_code}]"));
         }
 
         Ok(result)

@@ -47,7 +47,7 @@ impl LlmProvider for AnthropicProvider {
             match self.send_request(&request).await {
                 Ok(resp) => return Ok(resp),
                 Err(e) if attempt <= max_retries => {
-                    warn!("LLM 请求失败 (第 {attempt}/{max_retries} 次): {e}，{RETRY_INTERVAL_SECS}s 后重试");
+                    warn!("LLM request failed (attempt {attempt}/{max_retries}): {e}, retrying in {RETRY_INTERVAL_SECS}s");
                     tokio::time::sleep(std::time::Duration::from_secs(RETRY_INTERVAL_SECS)).await;
                 }
                 Err(e) => return Err(e),
@@ -71,26 +71,26 @@ impl AnthropicProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| anyhow!("API 请求失败: {e}"))?;
+            .map_err(|e| anyhow!("API request failed: {e}"))?;
 
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("API 错误: status={}, body={}", status.as_u16(), text));
+            return Err(anyhow!("API error: status={}, body={}", status.as_u16(), text));
         }
 
         let raw = resp
             .text()
             .await
-            .map_err(|e| anyhow!("读取响应失败: {e}"))?;
+            .map_err(|e| anyhow!("Failed to read response: {e}"))?;
 
         debug!("Raw API response: {raw}");
 
         let api_resp: crate::llm::types::ApiResponse = serde_json::from_str(&raw)
-            .map_err(|e| anyhow!("解析响应失败: {e}"))?;
+            .map_err(|e| anyhow!("Failed to parse response: {e}"))?;
 
         let chat_response = ChatResponse::try_from(api_resp)
-            .map_err(|e| anyhow!("响应转换失败: {e}"))?;
+            .map_err(|e| anyhow!("Failed to convert response: {e}"))?;
 
         info!(
             "LLM response: stop_reason={:?}, input_tokens={}, output_tokens={}",

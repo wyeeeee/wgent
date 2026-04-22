@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-// ── 请求类型 ──
+// -- Request types --
 
 #[derive(Clone, Debug)]
 pub struct ChatRequest {
@@ -40,7 +40,7 @@ pub struct ToolDefinition {
     pub input_schema: serde_json::Value,
 }
 
-// ── 响应类型 ──
+// -- Response types --
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
@@ -65,7 +65,7 @@ pub struct Usage {
     pub output_tokens: u32,
 }
 
-// ── Anthropic API 序列化结构 ──
+// -- Anthropic API serialization types --
 
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -135,7 +135,7 @@ pub(super) struct ApiUsage {
     output_tokens: u32,
 }
 
-// ── 转换实现 ──
+// -- Conversion implementations --
 
 impl ChatRequest {
     pub(super) fn to_api(&self) -> ApiRequest {

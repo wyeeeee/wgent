@@ -1,10 +1,10 @@
 {#
-  可用变量:
-  - tool_name : &str — 工具名称
-  - error     : &str — 错误信息
+  Available variables:
+  - tool_name : &str — Tool name
+  - error     : &str — Error message
 #}
-工具 `{{ tool_name }}` 执行失败，错误信息如下：
+Tool `{{ tool_name }}` execution failed with the following error:
 
 {{ error }}
 
-请根据错误信息分析原因，决定是否重试或换用其他方案。
+Analyze the error and decide whether to retry or try an alternative approach.

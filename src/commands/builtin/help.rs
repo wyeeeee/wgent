@@ -12,7 +12,7 @@ impl Command for HelpCommand {
     }
 
     fn description(&self) -> &str {
-        "显示可用命令列表"
+        "Show available commands"
     }
 
     async fn execute(
@@ -21,9 +21,9 @@ impl Command for HelpCommand {
         _args: Option<&str>,
     ) -> Result<CommandResult> {
         let text = if ctx.command_list.is_empty() {
-            "没有可用命令".to_string()
+            "No available commands".to_string()
         } else {
-            let mut lines = vec!["可用命令:".to_string()];
+            let mut lines = vec!["Available commands:".to_string()];
             for (name, desc) in &ctx.command_list {
                 lines.push(format!("  /{:<10} {}", name, desc));
             }

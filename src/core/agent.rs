@@ -34,7 +34,7 @@ impl Agent {
 
         if cfg.api_key.is_empty() {
             bail!(
-                "API key 未设置，请编辑 {}/wgent.json",
+                "API key not set, please edit {}/wgent.json",
                 dir.display()
             );
         }
@@ -62,7 +62,7 @@ impl Agent {
         let cfg = config.get();
 
         if cfg.api_key.is_empty() {
-            bail!("API key 未设置");
+            bail!("API key not set");
         }
 
         let llm = Arc::new(crate::llm::AnthropicProvider::new(config.clone()));
@@ -149,14 +149,14 @@ async fn run_loop(
         iterations += 1;
         let cfg = config.get();
         if iterations > cfg.agent_max_iterations {
-            let _ = tx.send(AgentEvent::Error("超过最大循环次数".into())).await;
+            let _ = tx.send(AgentEvent::Error("Maximum iteration limit reached".into())).await;
             return;
         }
 
         let request = match build_request(session, &prompts, &tools, &cfg).await {
             Ok(r) => r,
             Err(e) => {
-                let _ = tx.send(AgentEvent::Error(format!("构建请求失败: {e}"))).await;
+                let _ = tx.send(AgentEvent::Error(format!("Failed to build request: {e}"))).await;
                 return;
             }
         };
@@ -165,7 +165,7 @@ async fn run_loop(
             Ok(r) => r,
             Err(e) => {
                 error!("LLM request failed: {e}");
-                let _ = tx.send(AgentEvent::Error(format!("LLM 请求失败: {e}"))).await;
+                let _ = tx.send(AgentEvent::Error(format!("LLM request failed: {e}"))).await;
                 return;
             }
         };

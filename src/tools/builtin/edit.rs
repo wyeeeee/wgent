@@ -14,7 +14,7 @@ impl Tool for EditTool {
     }
 
     fn description(&self) -> &str {
-        "精确编辑文件：替换指定行范围的内容。先用 read 查看行号，再用本工具指定行范围进行替换。"
+        "Edit a file by replacing a specified line range. Use read first to view line numbers, then use this tool to specify the range to replace."
     }
 
     fn input_schema(&self) -> Value {
@@ -23,23 +23,23 @@ impl Tool for EditTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "文件路径"
+                    "description": "File path"
                 },
                 "start_line": {
                     "type": "integer",
-                    "description": "起始行号（1-indexed，inclusive）"
+                    "description": "Start line (1-indexed, inclusive)"
                 },
                 "end_line": {
                     "type": "integer",
-                    "description": "结束行号（1-indexed，inclusive）"
+                    "description": "End line (1-indexed, inclusive)"
                 },
                 "old_content": {
                     "type": "string",
-                    "description": "期望被替换的原内容（可选，用于校验防止改错位置）"
+                    "description": "Expected original content (optional, used to verify the correct location)"
                 },
                 "new_content": {
                     "type": "string",
-                    "description": "替换后的新内容（空字符串表示删除该行范围）"
+                    "description": "New replacement content (empty string to delete the line range)"
                 }
             },
             "required": ["path", "start_line", "end_line", "new_content"]
@@ -49,13 +49,13 @@ impl Tool for EditTool {
     async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<String> {
         let path_str = input["path"]
             .as_str()
-            .ok_or_else(|| anyhow!("缺少 path 参数"))?;
+            .ok_or_else(|| anyhow!("Missing 'path' parameter"))?;
         let start_line = input["start_line"]
             .as_u64()
-            .ok_or_else(|| anyhow!("缺少 start_line 参数"))? as usize;
+            .ok_or_else(|| anyhow!("Missing 'start_line' parameter"))? as usize;
         let end_line = input["end_line"]
             .as_u64()
-            .ok_or_else(|| anyhow!("缺少 end_line 参数"))? as usize;
+            .ok_or_else(|| anyhow!("Missing 'end_line' parameter"))? as usize;
         let new_content = input["new_content"]
             .as_str()
             .unwrap_or("")
@@ -65,17 +65,17 @@ impl Tool for EditTool {
         let path = resolve_path(&ctx.working_dir, path_str)?;
         let raw = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| anyhow!("读取文件失败 {}: {e}", path.display()))?;
+            .map_err(|e| anyhow!("Failed to read file {}: {e}", path.display()))?;
 
         let mut lines: Vec<String> = raw.lines().map(|l| l.to_string()).collect();
         let trailing_newline = raw.ends_with('\n');
         let total = lines.len();
 
         if start_line == 0 || start_line > total {
-            return Err(anyhow!("start_line {} 超出范围（文件共 {total} 行）", start_line));
+            return Err(anyhow!("start_line {} out of range (file has {total} lines)", start_line));
         }
         if end_line == 0 || end_line > total {
-            return Err(anyhow!("end_line {} 超出范围（文件共 {total} 行）", end_line));
+            return Err(anyhow!("end_line {} out of range (file has {total} lines)", end_line));
         }
         if start_line > end_line {
             return Err(anyhow!("start_line({start_line}) > end_line({end_line})"));
@@ -85,7 +85,7 @@ impl Tool for EditTool {
             let actual: String = lines[start_line - 1..end_line].join("\n");
             if actual.trim() != expected.trim() {
                 return Err(anyhow!(
-                    "内容校验失败（第 {}-{} 行）:\n--- 期望 ---\n{}\n--- 实际 ---\n{}",
+                    "Content mismatch (lines {}-{}):\n--- expected ---\n{}\n--- actual ---\n{}",
                     start_line, end_line, expected, actual
                 ));
             }
@@ -106,11 +106,11 @@ impl Tool for EditTool {
         }
         tokio::fs::write(&path, &result)
             .await
-            .map_err(|e| anyhow!("写入文件失败 {}: {e}", path.display()))?;
+            .map_err(|e| anyhow!("Failed to write file {}: {e}", path.display()))?;
 
         let new_line_count = if new_content.is_empty() { 0 } else { new_content.lines().count() };
         Ok(format!(
-            "已编辑: {} (第 {}-{} 行 → {} 行)\n--- 旧 ---\n{}\n--- 新 ---\n{}",
+            "Edited: {} (lines {}-{} → {} lines)\n--- old ---\n{}\n--- new ---\n{}",
             path.display(),
             start_line,
             end_line,

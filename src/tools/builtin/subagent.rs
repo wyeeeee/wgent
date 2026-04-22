@@ -27,7 +27,7 @@ impl Tool for SubAgentTool {
     }
 
     fn description(&self) -> &str {
-        "生成子代理执行子任务。子代理可独立使用工具，完成后返回结果文本。不可递归调用。"
+        "Spawn a sub-agent to execute a sub-task. The sub-agent can use tools independently and returns the result text. Cannot be called recursively."
     }
 
     fn input_schema(&self) -> Value {
@@ -36,7 +36,7 @@ impl Tool for SubAgentTool {
             "properties": {
                 "task": {
                     "type": "string",
-                    "description": "子代理需要完成的任务描述"
+                    "description": "Task description for the sub-agent to complete"
                 }
             },
             "required": ["task"]
@@ -46,10 +46,10 @@ impl Tool for SubAgentTool {
     async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<String> {
         let task = input["task"]
             .as_str()
-            .ok_or_else(|| anyhow!("缺少 task 参数"))?;
+            .ok_or_else(|| anyhow!("Missing 'task' parameter"))?;
 
         if task.trim().is_empty() {
-            return Err(anyhow!("task 不能为空"));
+            return Err(anyhow!("Task cannot be empty"));
         }
 
         let agent = Arc::new(Agent::new_sub(&self.config_dir, &self.working_dir)?);
@@ -65,6 +65,6 @@ impl Tool for SubAgentTool {
             }
         }
 
-        Ok(last_text.unwrap_or_else(|| "(子代理未返回文本结果)".into()))
+        Ok(last_text.unwrap_or_else(|| "(sub-agent returned no text result)".into()))
     }
 }

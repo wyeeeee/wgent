@@ -12,7 +12,7 @@ impl Command for NewCommand {
     }
 
     fn description(&self) -> &str {
-        "开始新的会话"
+        "Start a new session"
     }
 
     async fn execute(

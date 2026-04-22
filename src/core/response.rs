@@ -37,7 +37,7 @@ pub async fn process_response(
     let mut assistant_content: Vec<MessageContent> = Vec::new();
     let mut tool_calls: Vec<ToolCall> = Vec::new();
 
-    // 阶段 1: 处理文本/思考块，收集工具调用
+    // Phase 1: process text/thinking blocks, collect tool calls
     for block in &response.content {
         match block {
             ContentBlock::Thinking { text } => {
@@ -68,7 +68,7 @@ pub async fn process_response(
         }
     }
 
-    // 阶段 2: 并行执行所有工具调用
+    // Phase 2: execute all tool calls in parallel
     let tool_results = if tool_calls.is_empty() {
         Vec::new()
     } else {
@@ -129,7 +129,7 @@ pub async fn process_response(
         results
     };
 
-    // 阶段 3: 写入 session
+    // Phase 3: write to session
     for r in &tool_results {
         assistant_content.push(MessageContent::ToolCall {
             id: r.id.clone(),

@@ -73,7 +73,7 @@ impl ToolRegistry {
         let tool = self
             .tools
             .get(name)
-            .ok_or_else(|| anyhow!("tool not found: {name}"))?;
+            .ok_or_else(|| anyhow!("Tool not found: {name}"))?;
         tool.execute(input, ctx).await
     }
 

@@ -110,7 +110,7 @@ impl SessionManager {
         Ok(session)
     }
 
-    /// 持久化 session 到文件
+    /// Persist session to file
     pub async fn save(&self, session: &Arc<RwLock<Session>>) -> Result<()> {
         let guard = session.read().await;
         let path = self.file_path(&guard.id);

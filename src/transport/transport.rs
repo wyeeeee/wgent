@@ -1,31 +1,31 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-/// Agent → UI 的事件流
+/// Agent → UI event stream
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum AgentEvent {
-    /// 模型正在思考（可选展示）
+    /// Model is thinking (optional display)
     Thinking(String),
-    /// 文本流增量
+    /// Text stream delta
     TextDelta(String),
-    /// 完整文本响应
+    /// Complete text response
     TextComplete(String),
-    /// 工具调用开始
+    /// Tool call started
     ToolCallStart { id: String, name: String, input_preview: String },
-    /// 工具调用结束
+    /// Tool call ended
     ToolCallEnd { id: String, name: String, result: String },
-    /// 错误信息
+    /// Error message
     Error(String),
-    /// 本轮对话结束
+    /// Conversation turn ended
     Done,
 }
 
-/// 传输层抽象：UI ↔ Core 的桥梁
+/// Transport layer abstraction: bridge between Agent and UI
 #[async_trait]
 pub trait Transport: Send + Sync {
-    /// 阻塞读取用户输入
+    /// Read user input (blocking)
     async fn read_input(&self) -> Result<String>;
-    /// 向 UI 推送 agent 事件
+    /// Push agent event to UI
     async fn send_event(&self, event: AgentEvent) -> Result<()>;
 }

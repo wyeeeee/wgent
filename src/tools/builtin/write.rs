@@ -14,7 +14,7 @@ impl Tool for WriteTool {
     }
 
     fn description(&self) -> &str {
-        "创建或覆盖文件。会自动创建不存在的父目录。"
+        "Create or overwrite a file. Automatically creates parent directories if they don't exist."
     }
 
     fn input_schema(&self) -> Value {
@@ -23,11 +23,11 @@ impl Tool for WriteTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "文件路径（相对于工作目录或绝对路径）"
+                    "description": "File path (relative to working directory or absolute)"
                 },
                 "content": {
                     "type": "string",
-                    "description": "要写入的完整文件内容"
+                    "description": "The complete file content to write"
                 }
             },
             "required": ["path", "content"]
@@ -37,10 +37,10 @@ impl Tool for WriteTool {
     async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<String> {
         let path_str = input["path"]
             .as_str()
-            .ok_or_else(|| anyhow!("缺少 path 参数"))?;
+            .ok_or_else(|| anyhow!("Missing 'path' parameter"))?;
         let content = input["content"]
             .as_str()
-            .ok_or_else(|| anyhow!("缺少 content 参数"))?;
+            .ok_or_else(|| anyhow!("Missing 'content' parameter"))?;
         let path = resolve_path(&ctx.working_dir, path_str)?;
 
         if let Some(parent) = path.parent() {
@@ -49,9 +49,9 @@ impl Tool for WriteTool {
 
         tokio::fs::write(&path, content)
             .await
-            .map_err(|e| anyhow!("写入文件失败 {}: {e}", path.display()))?;
+            .map_err(|e| anyhow!("Failed to write file {}: {e}", path.display()))?;
 
         let lines = content.lines().count();
-        Ok(format!("已写入: {} ({} 行)", path.display(), lines))
+        Ok(format!("Written: {} ({} lines)", path.display(), lines))
     }
 }

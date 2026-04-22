@@ -23,7 +23,7 @@ impl TerminalTransport {
                 continue;
             }
 
-            // Slash 命令检测
+            // Slash command detection
             if let Some(rest) = input.strip_prefix('/') {
                 let (cmd_name, args) = match rest.split_once(' ') {
                     Some((name, a)) => (name, Some(a)),
@@ -50,7 +50,7 @@ impl TerminalTransport {
                 }
             }
 
-            // 普通对话
+            // Normal conversation
             let (sid, mut rx) = agent.chat(session_id.as_deref(), &input).await?;
             session_id = Some(sid);
 
@@ -123,12 +123,7 @@ impl Transport for TerminalTransport {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("wgent=info".parse()?),
-        )
-        .init();
+    wgent::logging::init("info");
 
     let data_dir = wgent::config::Config::default_dir();
     let working_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));

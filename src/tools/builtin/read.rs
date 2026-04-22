@@ -14,7 +14,7 @@ impl Tool for ReadTool {
     }
 
     fn description(&self) -> &str {
-        "读取文件内容，返回带行号的文本。可指定行范围，不指定则返回全部内容。"
+        "Read file contents and return line-numbered text. Optionally specify a line range; returns the entire file if omitted."
     }
 
     fn input_schema(&self) -> Value {
@@ -23,15 +23,15 @@ impl Tool for ReadTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "文件路径（相对于工作目录或绝对路径）"
+                    "description": "File path (relative to working directory or absolute)"
                 },
                 "start_line": {
                     "type": "integer",
-                    "description": "起始行号（1-indexed，inclusive，可选，默认 1）"
+                    "description": "Start line (1-indexed, inclusive, optional, default 1)"
                 },
                 "end_line": {
                     "type": "integer",
-                    "description": "结束行号（1-indexed，inclusive，可选，默认文件末尾）"
+                    "description": "End line (1-indexed, inclusive, optional, default end of file)"
                 }
             },
             "required": ["path"]
@@ -41,12 +41,12 @@ impl Tool for ReadTool {
     async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<String> {
         let path_str = input["path"]
             .as_str()
-            .ok_or_else(|| anyhow!("缺少 path 参数"))?;
+            .ok_or_else(|| anyhow!("Missing 'path' parameter"))?;
         let path = resolve_path(&ctx.working_dir, path_str)?;
 
         let content = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| anyhow!("读取文件失败 {}: {e}", path.display()))?;
+            .map_err(|e| anyhow!("Failed to read file {}: {e}", path.display()))?;
 
         let all_lines: Vec<&str> = content.lines().collect();
         let total_lines = all_lines.len();
@@ -64,7 +64,7 @@ impl Tool for ReadTool {
             .unwrap_or(total_lines);
 
         if start > total_lines {
-            return Err(anyhow!("start_line {} 超出范围（文件共 {total_lines} 行）", start));
+            return Err(anyhow!("start_line {} out of range (file has {total_lines} lines)", start));
         }
         if start > end {
             return Err(anyhow!("start_line({start}) > end_line({end})"));
@@ -78,11 +78,11 @@ impl Tool for ReadTool {
             .join("\n");
 
         let range_info = if start == 1 && end == total_lines {
-            format!("共 {} 行", total_lines)
+            format!("{} lines total", total_lines)
         } else {
-            format!("第 {}-{} 行 / 共 {} 行", start, end, total_lines)
+            format!("lines {}-{} / {} total", start, end, total_lines)
         };
 
-        Ok(format!("文件: {} ({})\n{}", path.display(), range_info, numbered))
+        Ok(format!("File: {} ({})\n{}", path.display(), range_info, numbered))
     }
 }

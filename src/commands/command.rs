@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::core::session::SessionManager;
 
-/// 命令执行上下文，按需扩展字段
+/// Command execution context
 #[derive(Clone)]
 pub struct CommandContext {
     pub session_manager: SessionManager,
@@ -14,7 +14,7 @@ pub struct CommandContext {
     pub command_list: Vec<(String, String)>,
 }
 
-/// 结构化返回
+/// Structured command result
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(dead_code)]
@@ -24,17 +24,17 @@ pub enum CommandResult {
     Error { message: String },
 }
 
-/// 命令抽象
+/// Command abstraction
 #[async_trait]
 pub trait Command: Send + Sync {
-    /// 命令名
+    /// Command name
     fn name(&self) -> &str;
 
-    /// 简短描述（供 /help 使用）
+    /// Short description (for /help)
     #[allow(dead_code)]
     fn description(&self) -> &str;
 
-    /// 执行命令
+    /// Execute the command
     async fn execute(
         &self,
         ctx: &CommandContext,
