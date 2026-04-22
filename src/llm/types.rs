@@ -112,20 +112,9 @@ pub(super) struct ApiTool {
 pub struct ApiResponse {
     id: String,
     model: String,
-    content: Vec<ApiContentBlockResp>,
+    content: Vec<serde_json::Value>,
     stop_reason: String,
     usage: ApiUsage,
-}
-
-#[derive(Deserialize)]
-#[serde(tag = "type")]
-pub(super) enum ApiContentBlockResp {
-    #[serde(rename = "thinking")]
-    Thinking { thinking: String },
-    #[serde(rename = "text")]
-    Text { text: String },
-    #[serde(rename = "tool_use")]
-    ToolUse { id: String, name: String, input: serde_json::Value },
 }
 
 #[derive(Deserialize)]
@@ -210,17 +199,27 @@ impl TryFrom<ApiResponse> for ChatResponse {
             other => return Err(format!("unknown stop_reason: {other}")),
         };
 
-        let content = resp
-            .content
-            .into_iter()
-            .map(|block| match block {
-                ApiContentBlockResp::Thinking { thinking } => ContentBlock::Thinking { text: thinking },
-                ApiContentBlockResp::Text { text } => ContentBlock::Text { text },
-                ApiContentBlockResp::ToolUse { id, name, input } => {
-                    ContentBlock::ToolUse { id, name, input }
+        let mut content = Vec::new();
+        for block in resp.content {
+            let typ = block["type"].as_str().unwrap_or("");
+            match typ {
+                "thinking" => {
+                    let text = block["thinking"].as_str().unwrap_or("").to_string();
+                    content.push(ContentBlock::Thinking { text });
                 }
-            })
-            .collect();
+                "text" => {
+                    let text = block["text"].as_str().unwrap_or("").to_string();
+                    content.push(ContentBlock::Text { text });
+                }
+                "tool_use" => {
+                    let id = block["id"].as_str().unwrap_or("").to_string();
+                    let name = block["name"].as_str().unwrap_or("").to_string();
+                    let input = block.get("input").cloned().unwrap_or(serde_json::Value::Null);
+                    content.push(ContentBlock::ToolUse { id, name, input });
+                }
+                _ => {} // skip unknown types (server_tool_use, server_tool_result, etc.)
+            }
+        }
 
         Ok(ChatResponse {
             id: resp.id,
