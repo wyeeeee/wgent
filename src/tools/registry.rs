@@ -65,11 +65,6 @@ impl ToolRegistry {
         self.tools.insert(tool.name().to_string(), tool);
     }
 
-    #[allow(dead_code)]
-    pub fn get(&self, name: &str) -> Option<&dyn Tool> {
-        self.tools.get(name).map(|t| t.as_ref())
-    }
-
     pub async fn execute(&self, name: &str, input: Value, ctx: &ToolContext) -> Result<String> {
         let tool = self
             .tools
@@ -87,14 +82,5 @@ impl ToolRegistry {
                 input_schema: t.input_schema(),
             })
             .collect()
-    }
-
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.tools.is_empty()
-    }
-
-    pub fn remove(&mut self, name: &str) {
-        self.tools.remove(name);
     }
 }

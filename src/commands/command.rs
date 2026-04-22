@@ -17,7 +17,6 @@ pub struct CommandContext {
 /// Structured command result
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-#[allow(dead_code)]
 pub enum CommandResult {
     NewSession { session_id: String },
     Message { text: String },
@@ -31,7 +30,6 @@ pub trait Command: Send + Sync {
     fn name(&self) -> &str;
 
     /// Short description (for /help)
-    #[allow(dead_code)]
     fn description(&self) -> &str;
 
     /// Execute the command

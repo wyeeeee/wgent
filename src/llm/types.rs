@@ -43,7 +43,6 @@ pub struct ToolDefinition {
 // -- Response types --
 
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub struct ChatResponse {
     pub id: String,
     pub model: String,

@@ -91,10 +91,6 @@ impl Transport for TerminalTransport {
             AgentEvent::Thinking(text) => {
                 println!("{}", text.dimmed().italic());
             }
-            AgentEvent::TextDelta(delta) => {
-                print!("{delta}");
-                io::stdout().flush()?;
-            }
             AgentEvent::TextComplete(text) => {
                 println!("{}", text.white());
             }

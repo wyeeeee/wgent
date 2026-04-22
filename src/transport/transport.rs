@@ -17,12 +17,9 @@ impl TokenUsage {
 
 /// Agent → UI event stream
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum AgentEvent {
     /// Model is thinking (optional display)
     Thinking(String),
-    /// Text stream delta
-    TextDelta(String),
     /// Complete text response
     TextComplete(String),
     /// Tool call started
