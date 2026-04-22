@@ -25,7 +25,7 @@ impl AnthropicProvider {
     }
 
     pub fn model_name(&self) -> String {
-        self.config.get().model
+        self.config.get().model.clone()
     }
 }
 

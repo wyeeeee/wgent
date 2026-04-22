@@ -52,8 +52,8 @@ impl Config {
         }
     }
 
-    pub fn get(&self) -> ConfigValues {
-        (*self.inner).clone()
+    pub fn get(&self) -> &ConfigValues {
+        &self.inner
     }
 
     pub fn load(dir: &Path) -> Result<Self> {
