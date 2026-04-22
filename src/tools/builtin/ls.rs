@@ -18,7 +18,7 @@ impl Tool for LsTool {
     }
 
     fn description(&self) -> &str {
-        "List directory contents with line counts for files."
+        "List directory contents with line counts for files. Always start with depth 1 to get an overview."
     }
 
     fn input_schema(&self) -> Value {
