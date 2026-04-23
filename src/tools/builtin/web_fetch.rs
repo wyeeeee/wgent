@@ -84,6 +84,7 @@ fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        s[..max].to_string()
+        let bound = s.floor_char_boundary(max);
+        s[..bound].to_string()
     }
 }

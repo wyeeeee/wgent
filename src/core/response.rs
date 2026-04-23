@@ -6,82 +6,206 @@ use tracing::{error, warn};
 
 use crate::core::message::{Message, MessageContent};
 use crate::core::session::Session;
+use crate::llm::sse::{SseBlock, SseDelta, SseEvent, SseParser};
 use crate::llm::types::*;
 use crate::prompt::PromptManager;
 use crate::tools::tool::ToolContext;
 use crate::tools::ToolRegistry;
-use crate::transport::AgentEvent;
+use crate::transport::{AgentEvent, TokenUsage};
 use crate::utils::tool_input_preview;
-
-struct ToolCall {
-    id: String,
-    name: String,
-    input: Value,
-}
 
 struct ToolCallResult {
     id: String,
-    name: String,
-    arguments: Value,
     output: String,
 }
 
+/// Tracks the type of the currently active content block.
+#[derive(Clone, Copy, PartialEq)]
+enum BlockType {
+    None,
+    Thinking,
+    Text,
+    ToolUse,
+}
+
+/// Process a streaming HTTP response from the LLM.
+/// Returns (accumulated usage, whether tool calls need another loop iteration).
 pub async fn process_response(
-    response: ChatResponse,
+    response: reqwest::Response,
     session: &mut Session,
     tools: &Arc<ToolRegistry>,
     prompts: &Arc<PromptManager>,
     tx: &Sender<AgentEvent>,
-) -> bool {
+) -> (TokenUsage, bool) {
+    let mut parser = SseParser::new();
+    let mut usage = TokenUsage::default();
     let mut assistant_content: Vec<MessageContent> = Vec::new();
-    let mut tool_calls: Vec<ToolCall> = Vec::new();
 
-    // Phase 1: process text/thinking blocks, collect tool calls
-    for block in response.content {
-        match block {
-            ContentBlock::Thinking { text } => {
-                if tx.send(AgentEvent::Thinking(text.clone())).await.is_err() {
-                    return false;
-                }
-                assistant_content.push(MessageContent::Thinking { text });
-            }
-            ContentBlock::Text { text } => {
-                if tx.send(AgentEvent::TextComplete(text.clone())).await.is_err() {
-                    return false;
-                }
-                assistant_content.push(MessageContent::Text { text });
-            }
-            ContentBlock::ToolUse { id, name, input } => {
-                let input_preview = tool_input_preview(&name, &input);
-                if tx
-                    .send(AgentEvent::ToolCallStart {
-                        id: id.clone(),
-                        name: name.clone(),
-                        input_preview,
-                    })
-                    .await
-                    .is_err()
-                {
-                    return false;
-                }
+    // Current block tracking
+    let mut block_type = BlockType::None;
+    let mut thinking_text = String::new();
+    let mut text_content = String::new();
+    let mut tool_id = String::new();
+    let mut tool_name = String::new();
+    let mut tool_json_buffer = String::new();
+    let mut stop_reason: Option<StopReason> = None;
 
-                tool_calls.push(ToolCall {
-                    id,
-                    name,
-                    input,
-                });
+    let mut stream = response.bytes_stream();
+    use futures_util::StreamExt;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = match chunk {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Stream read error: {e}");
+                break;
             }
-            ContentBlock::ToolResult { .. } => {}
+        };
+
+        let events = parser.feed(&chunk);
+        for event in events {
+            match event {
+                SseEvent::MessageStart { input_tokens, .. } => {
+                    usage.input_tokens += input_tokens as u64;
+                }
+                SseEvent::ContentBlockStart { block, .. } => {
+                    match block {
+                        SseBlock::Thinking => {
+                            block_type = BlockType::Thinking;
+                            thinking_text.clear();
+                            let _ = tx.send(AgentEvent::ThinkingStart).await;
+                        }
+                        SseBlock::Text => {
+                            block_type = BlockType::Text;
+                            text_content.clear();
+                        }
+                        SseBlock::ToolUse { id, name } => {
+                            block_type = BlockType::ToolUse;
+                            tool_id = id;
+                            tool_name = name;
+                            tool_json_buffer.clear();
+                        }
+                    }
+                }
+                SseEvent::ContentBlockDelta { delta, .. } => match delta {
+                    SseDelta::Text { text } => {
+                        if tx.send(AgentEvent::TextDelta(text.clone())).await.is_err() {
+                            return (usage, false);
+                        }
+                        text_content.push_str(&text);
+                    }
+                    SseDelta::Thinking { text } => {
+                        if tx.send(AgentEvent::ThinkingDelta(text.clone())).await.is_err() {
+                            return (usage, false);
+                        }
+                        thinking_text.push_str(&text);
+                    }
+                    SseDelta::Signature { .. } => {}
+                    SseDelta::InputJson { partial } => {
+                        tool_json_buffer.push_str(&partial);
+                    }
+                },
+                SseEvent::ContentBlockStop { .. } => {
+                    match block_type {
+                        BlockType::Thinking => {
+                            if !thinking_text.is_empty() {
+                                assistant_content.push(MessageContent::Thinking {
+                                    text: std::mem::take(&mut thinking_text),
+                                });
+                            }
+                        }
+                        BlockType::Text => {
+                            if !text_content.is_empty() {
+                                assistant_content.push(MessageContent::Text {
+                                    text: std::mem::take(&mut text_content),
+                                });
+                            }
+                        }
+                        BlockType::ToolUse => {
+                            let input: Value = if tool_json_buffer.is_empty() {
+                                serde_json::json!({})
+                            } else {
+                                serde_json::from_str(&tool_json_buffer).unwrap_or_else(|_| {
+                                    warn!("Failed to parse tool input JSON for {}", tool_name);
+                                    serde_json::json!({})
+                                })
+                            };
+                            let input_preview = tool_input_preview(&tool_name, &input);
+                            if tx
+                                .send(AgentEvent::ToolCallStart {
+                                    id: tool_id.clone(),
+                                    name: tool_name.clone(),
+                                    input_preview,
+                                })
+                                .await
+                                .is_err()
+                            {
+                                return (usage, false);
+                            }
+                            assistant_content.push(MessageContent::ToolCall {
+                                id: tool_id.clone(),
+                                name: tool_name.clone(),
+                                arguments: input,
+                            });
+                            tool_json_buffer.clear();
+                        }
+                        BlockType::None => {}
+                    }
+                    block_type = BlockType::None;
+                }
+                SseEvent::MessageDelta {
+                    stop_reason: sr,
+                    output_tokens,
+                } => {
+                    usage.output_tokens += output_tokens as u64;
+                    if let Some(s) = sr {
+                        stop_reason = match s.as_str() {
+                            "end_turn" => Some(StopReason::EndTurn),
+                            "tool_use" => Some(StopReason::ToolUse),
+                            "max_tokens" => Some(StopReason::MaxTokens),
+                            _ => None,
+                        };
+                    }
+                }
+                SseEvent::MessageStop => {}
+                SseEvent::Ping => {}
+                SseEvent::Error { message, .. } => {
+                    error!("Stream error from API: {message}");
+                    let _ = tx.send(AgentEvent::Error(message)).await;
+                }
+            }
         }
     }
 
-    // Phase 2: execute all tool calls in parallel
-    let tool_results = if tool_calls.is_empty() {
-        Vec::new()
-    } else {
-        let mut handles = Vec::with_capacity(tool_calls.len());
+    // Flush any remaining data in parser
+    for event in parser.flush() {
+        if let SseEvent::MessageDelta { output_tokens, .. } = event {
+            usage.output_tokens += output_tokens as u64;
+        }
+    }
 
-        for tc in tool_calls {
+    // Collect tool calls for execution
+    let tool_calls: Vec<(String, String, Value)> = assistant_content
+        .iter()
+        .filter_map(|c| match c {
+            MessageContent::ToolCall { id, name, arguments } => {
+                Some((id.clone(), name.clone(), arguments.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+
+    // Write assistant message to session
+    session.add_message(Message {
+        role: Role::Assistant,
+        content: assistant_content,
+    });
+
+    let has_tool_calls = !tool_calls.is_empty();
+    if has_tool_calls {
+        // Execute tool calls in parallel
+        let mut handles = Vec::with_capacity(tool_calls.len());
+        for (id, name, arguments) in tool_calls {
             let tools = tools.clone();
             let prompts = prompts.clone();
             let tx = tx.clone();
@@ -92,34 +216,31 @@ pub async fn process_response(
                     working_dir,
                     events: Some(tx.clone()),
                 };
-                let result = tools.execute(&tc.name, tc.input.clone(), &ctx).await;
-
+                let result = tools.execute(&name, arguments.clone(), &ctx).await;
                 let output = match result {
                     Ok(o) => o,
                     Err(e) => {
-                        warn!("Tool '{}' failed: {e}", tc.name);
+                        warn!("Tool '{}' failed: {e}", name);
                         prompts
-                            .render_tool_error(&tc.name, &e.to_string())
+                            .render_tool_error(&name, &e.to_string())
                             .unwrap_or_else(|_| e.to_string())
                     }
                 };
 
                 if tx
                     .send(AgentEvent::ToolCallEnd {
-                        id: tc.id.clone(),
-                        name: tc.name.clone(),
+                        id: id.clone(),
+                        name: name.clone(),
                         result: output.clone(),
                     })
                     .await
                     .is_err()
                 {
-                    warn!("Channel closed while sending ToolCallEnd for '{}'", tc.name);
+                    warn!("Channel closed while sending ToolCallEnd for '{}'", name);
                 }
 
                 ToolCallResult {
-                    id: tc.id,
-                    name: tc.name,
-                    arguments: tc.input,
+                    id,
                     output,
                 }
             }));
@@ -134,28 +255,10 @@ pub async fn process_response(
                 }
             }
         }
-        results
-    };
 
-    // Phase 3: write to session
-    for r in &tool_results {
-        assistant_content.push(MessageContent::ToolCall {
-            id: r.id.clone(),
-            name: r.name.clone(),
-            arguments: r.arguments.clone(),
-        });
-    }
-
-    session.add_message(Message {
-        role: Role::Assistant,
-        content: assistant_content,
-    });
-
-    let has_tool_calls = !tool_results.is_empty();
-    if has_tool_calls {
         session.add_message(Message {
             role: Role::User,
-            content: tool_results
+            content: results
                 .into_iter()
                 .map(|r| MessageContent::ToolResult {
                     tool_use_id: r.id,
@@ -165,5 +268,11 @@ pub async fn process_response(
         });
     }
 
-    has_tool_calls
+    if stop_reason == Some(StopReason::MaxTokens) {
+        let _ = tx.send(AgentEvent::Error(
+            "Output truncated: max_tokens limit reached. Consider increasing max_tokens in config.".to_string(),
+        )).await;
+    }
+
+    (usage, has_tool_calls)
 }

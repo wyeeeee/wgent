@@ -1,4 +1,5 @@
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -10,9 +11,21 @@ use wgent::commands::{CommandContext, CommandResult};
 use wgent::core::Agent;
 use wgent::transport::{AgentEvent, Transport};
 
-struct TerminalTransport;
+const PHASE_NONE: u8 = 0;
+const PHASE_THINKING: u8 = 1;
+const PHASE_TEXT: u8 = 2;
+
+struct TerminalTransport {
+    phase: AtomicU8,
+}
 
 impl TerminalTransport {
+    fn new() -> Self {
+        Self {
+            phase: AtomicU8::new(PHASE_NONE),
+        }
+    }
+
     async fn run(&self, agent: Arc<Agent>) -> Result<()> {
         let mut session_id: Option<String> = None;
         let working_dir = agent.working_dir().to_path_buf();
@@ -52,6 +65,7 @@ impl TerminalTransport {
             // Normal conversation
             let (sid, mut rx) = agent.chat(session_id.as_deref(), &input).await?;
             session_id = Some(sid);
+            self.phase.store(PHASE_NONE, Ordering::Relaxed);
 
             while let Some(event) = rx.recv().await {
                 self.send_event(event).await?;
@@ -73,6 +87,14 @@ impl TerminalTransport {
             }
         }
     }
+
+    fn ensure_break(&self, next: u8) {
+        let current = self.phase.load(Ordering::Relaxed);
+        if current != PHASE_NONE && current != next {
+            println!();
+        }
+        self.phase.store(next, Ordering::Relaxed);
+    }
 }
 
 #[async_trait]
@@ -88,13 +110,21 @@ impl Transport for TerminalTransport {
 
     async fn send_event(&self, event: AgentEvent) -> Result<()> {
         match event {
-            AgentEvent::Thinking(text) => {
-                println!("{}", text.dimmed().italic());
+            AgentEvent::ThinkingStart => {
+                self.phase.store(PHASE_THINKING, Ordering::Relaxed);
             }
-            AgentEvent::TextComplete(text) => {
-                println!("{}", text.white());
+            AgentEvent::ThinkingDelta(text) => {
+                print!("{}", text.dimmed().italic());
+                io::stdout().flush()?;
+                self.phase.store(PHASE_THINKING, Ordering::Relaxed);
+            }
+            AgentEvent::TextDelta(text) => {
+                self.ensure_break(PHASE_TEXT);
+                print!("{}", text.white());
+                io::stdout().flush()?;
             }
             AgentEvent::ToolCallStart { name, input_preview, .. } => {
+                self.ensure_break(PHASE_NONE);
                 println!("  {} {}: {}", "⟳".yellow(), format!("{name}").yellow(), input_preview.dimmed());
             }
             AgentEvent::ToolCallEnd { name, result, .. } => {
@@ -106,9 +136,11 @@ impl Transport for TerminalTransport {
                 );
             }
             AgentEvent::Error(msg) => {
+                self.ensure_break(PHASE_NONE);
                 println!("{} {}", "✗".red(), msg.red());
             }
             AgentEvent::Done { usage } => {
+                self.ensure_break(PHASE_NONE);
                 println!("{}", "─".repeat(40).dimmed());
                 if let Some(u) = usage {
                     println!(
@@ -139,6 +171,6 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Agent initialized, model={}, working_dir={}", agent.model_name(), working_dir.display());
 
-    let transport = TerminalTransport;
+    let transport = TerminalTransport::new();
     transport.run(agent).await
 }

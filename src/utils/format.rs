@@ -17,7 +17,8 @@ pub fn tool_input_preview(name: &str, input: &serde_json::Value) -> String {
             let path = input["path"].as_str().unwrap_or("");
             let old = input["old_string"].as_str().unwrap_or("");
             let preview = if old.len() > 40 {
-                format!("{}…", &old[..40])
+                let bound = old.floor_char_boundary(40);
+                format!("{}…", &old[..bound])
             } else if old.is_empty() {
                 "(empty match)".to_string()
             } else {

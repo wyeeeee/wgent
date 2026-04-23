@@ -1,6 +1,6 @@
 # Wgent
 
-A Rust-based AI Agent framework powered by the Anthropic Messages API, with tool calling, sub-agent support, session persistence, and an extensible command system.
+A Rust-based AI Agent framework powered by the Anthropic Messages API with SSE streaming, tool calling, sub-agent support, session persistence, and an extensible command system.
 
 ## Quick Start
 
@@ -20,19 +20,20 @@ Configuration file located at `~/.wgent/wgent.json`, supports hot-reloading:
   "api_key": "",
   "model": "claude-sonnet-4-20250514",
   "base_url": "https://api.anthropic.com",
-  "max_tokens": 8096,
+  "max_tokens": 120000,
   "thinking_budget": 0,
   "command_timeout": 60,
   "agent_max_iterations": 50,
   "llm_max_retries": 10,
   "grep_max_results": 50,
+  "web_fetch_max_length": 500000,
   "tools": "all",
   "commands": "all"
 }
 ```
 
 - `tools` / `commands`: Set to `"all"` to enable everything, or comma-separated list (e.g. `"read,write,bash"`)
-- API key can also be set via `.env` with `ANTHROPIC_API_KEY`
+- API key can also be set via `ANTHROPIC_API_KEY` environment variable
 
 ## Directory Layout
 
@@ -49,11 +50,10 @@ cli/               Terminal UI layer (Transport)
 src/
   config/          JSON configuration system
   core/            Agent core (self-bootstrapping constructor)
-  llm/             LLM provider abstraction
+  llm/             LLM provider abstraction + SSE streaming parser
   tools/           Tool registry and built-in tools
   commands/        Slash command system
   prompt/          Tera template prompts
   transport/       Event stream transport
-  logging/         Logging initialization
   utils/           Utility functions
 ```

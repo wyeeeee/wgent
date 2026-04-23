@@ -1,3 +1,4 @@
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use anyhow::{anyhow, Result};
@@ -72,12 +73,29 @@ impl Tool for LsTool {
 }
 
 /// Try to count lines for a file. Returns None if the file appears to be binary.
+/// Uses BufReader to avoid loading the entire file into memory.
 fn try_count_lines(path: &Path) -> Option<usize> {
-    let data = std::fs::read(path).ok()?;
-    if data.contains(&0) {
-        return None;
+    let file = std::fs::File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let mut count = 0;
+    let mut buf = Vec::new();
+
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) => break,
+            Ok(_) => {
+                // Binary check on first line only
+                if count == 0 && buf.contains(&0) {
+                    return None;
+                }
+                count += 1;
+            }
+            Err(_) => break,
+        }
     }
-    Some(data.iter().filter(|&&b| b == b'\n').count() + 1)
+
+    Some(if count == 0 { 1 } else { count })
 }
 
 fn list_dir(dir: &Path, max_depth: u8, current_depth: u8, output: &mut String) -> Result<()> {

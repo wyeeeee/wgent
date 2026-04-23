@@ -40,7 +40,7 @@ pub struct ToolDefinition {
     pub input_schema: serde_json::Value,
 }
 
-// -- Response types --
+// -- Response types (reconstructed from stream) --
 
 #[derive(Clone, Debug)]
 pub struct ChatResponse {
@@ -78,6 +78,7 @@ pub(super) struct ApiRequest {
     tools: Vec<ApiTool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<ApiThinking>,
+    stream: bool,
 }
 
 #[derive(Serialize)]
@@ -108,21 +109,6 @@ pub(super) struct ApiTool {
     input_schema: serde_json::Value,
 }
 
-#[derive(Deserialize)]
-pub struct ApiResponse {
-    id: String,
-    model: String,
-    content: Vec<serde_json::Value>,
-    stop_reason: String,
-    usage: ApiUsage,
-}
-
-#[derive(Deserialize)]
-pub(super) struct ApiUsage {
-    input_tokens: u32,
-    output_tokens: u32,
-}
-
 // -- Conversion implementations --
 
 impl ChatRequest {
@@ -143,6 +129,7 @@ impl ChatRequest {
             messages: self.messages.iter().map(|m| m.to_api()).collect(),
             tools: self.tools.iter().map(|t| t.to_api()).collect(),
             thinking,
+            stream: true,
         }
     }
 }
@@ -185,51 +172,5 @@ impl ToolDefinition {
             description: self.description.clone(),
             input_schema: self.input_schema.clone(),
         }
-    }
-}
-
-impl TryFrom<ApiResponse> for ChatResponse {
-    type Error = String;
-
-    fn try_from(resp: ApiResponse) -> Result<Self, Self::Error> {
-        let stop_reason = match resp.stop_reason.as_str() {
-            "end_turn" => StopReason::EndTurn,
-            "tool_use" => StopReason::ToolUse,
-            "max_tokens" => StopReason::MaxTokens,
-            other => return Err(format!("unknown stop_reason: {other}")),
-        };
-
-        let mut content = Vec::new();
-        for block in resp.content {
-            let typ = block["type"].as_str().unwrap_or("");
-            match typ {
-                "thinking" => {
-                    let text = block["thinking"].as_str().unwrap_or("").to_string();
-                    content.push(ContentBlock::Thinking { text });
-                }
-                "text" => {
-                    let text = block["text"].as_str().unwrap_or("").to_string();
-                    content.push(ContentBlock::Text { text });
-                }
-                "tool_use" => {
-                    let id = block["id"].as_str().unwrap_or("").to_string();
-                    let name = block["name"].as_str().unwrap_or("").to_string();
-                    let input = block.get("input").cloned().unwrap_or(serde_json::Value::Null);
-                    content.push(ContentBlock::ToolUse { id, name, input });
-                }
-                _ => {} // skip unknown types (server_tool_use, server_tool_result, etc.)
-            }
-        }
-
-        Ok(ChatResponse {
-            id: resp.id,
-            model: resp.model,
-            content,
-            stop_reason,
-            usage: Usage {
-                input_tokens: resp.usage.input_tokens,
-                output_tokens: resp.usage.output_tokens,
-            },
-        })
     }
 }

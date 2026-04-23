@@ -7,7 +7,7 @@ use tracing::{debug, info, warn};
 use crate::config::Config;
 use crate::llm::error::LlmError;
 use crate::llm::provider::LlmProvider;
-use crate::llm::types::{ChatRequest, ChatResponse};
+use crate::llm::types::ChatRequest;
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
@@ -31,7 +31,7 @@ impl AnthropicProvider {
 
 #[async_trait]
 impl LlmProvider for AnthropicProvider {
-    async fn chat(&self, mut request: ChatRequest) -> Result<ChatResponse, LlmError> {
+    async fn chat(&self, mut request: ChatRequest) -> Result<reqwest::Response, LlmError> {
         let cfg = self.config.get();
         if request.max_tokens == 0 {
             request.max_tokens = cfg.max_tokens;
@@ -66,10 +66,10 @@ impl LlmProvider for AnthropicProvider {
 }
 
 impl AnthropicProvider {
-    async fn send_request(&self, request: &ChatRequest) -> Result<ChatResponse, LlmError> {
+    async fn send_request(&self, request: &ChatRequest) -> Result<reqwest::Response, LlmError> {
         let cfg = self.config.get();
         let body = request.to_api();
-        debug!("Sending request to Anthropic API, model={}, thinking_budget={}", request.model, request.thinking_budget);
+        debug!("Sending streaming request, model={}, thinking_budget={}", request.model, request.thinking_budget);
 
         let resp = self
             .client
@@ -88,39 +88,17 @@ impl AnthropicProvider {
             return Err(classify_http_error(status.as_u16(), &text));
         }
 
-        let raw = resp
-            .text()
-            .await
-            .map_err(|e| LlmError::Network { message: e.to_string() })?;
-
-        debug!("Raw API response: {raw}");
-
-        let api_resp: crate::llm::types::ApiResponse = serde_json::from_str(&raw)
-            .map_err(|e| LlmError::Parse { message: format!("Failed to parse response: {e}") })?;
-
-        let chat_response = ChatResponse::try_from(api_resp)
-            .map_err(|e| LlmError::Parse { message: format!("Failed to convert response: {e}") })?;
-
-        info!(
-            "LLM response: stop_reason={:?}, input_tokens={}, output_tokens={}",
-            chat_response.stop_reason,
-            chat_response.usage.input_tokens,
-            chat_response.usage.output_tokens
-        );
-
-        Ok(chat_response)
+        info!("Stream connection established, status={}", status);
+        Ok(resp)
     }
 }
 
 fn classify_http_error(status: u16, body: &str) -> LlmError {
     match status {
-        429 => {
-            let retry_after_ms = None; // Anthropic doesn't use retry-after header typically
-            LlmError::RateLimited {
-                retry_after_ms,
-                message: format!("status=429, body={body}"),
-            }
-        }
+        429 => LlmError::RateLimited {
+            retry_after_ms: None,
+            message: format!("status=429, body={body}"),
+        },
         401 | 403 => LlmError::Authentication {
             message: format!("status={status}, body={body}"),
         },

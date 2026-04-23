@@ -62,7 +62,7 @@ impl Tool for SubAgentTool {
             {
                 break;
             }
-            if let AgentEvent::TextComplete(text) = event {
+            if let AgentEvent::TextDelta(text) = event {
                 last_text = Some(text);
             }
         }

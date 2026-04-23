@@ -155,9 +155,11 @@ async fn run_loop(
             }
         };
 
-        total_usage.accumulate(response.usage.input_tokens, response.usage.output_tokens);
+        let (usage, has_tool_calls) = process_response(response, session, &tools, &prompts, tx).await;
+        total_usage.input_tokens += usage.input_tokens;
+        total_usage.output_tokens += usage.output_tokens;
 
-        if !process_response(response, session, &tools, &prompts, tx).await {
+        if !has_tool_calls {
             return total_usage;
         }
     }

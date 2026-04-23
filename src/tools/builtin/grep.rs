@@ -26,7 +26,7 @@ impl Tool for GrepTool {
     }
 
     fn description(&self) -> &str {
-        "Search for a pattern across files in a directory. Supports regex, file type filtering (e.g. 'rs', 'py'), and respects .gitignore."
+        "Search for a pattern across files in a directory. Uses regex syntax — use literal text for exact match, or (?i) prefix for case-insensitive. Supports file type filtering and respects .gitignore."
     }
 
     fn input_schema(&self) -> Value {
@@ -35,7 +35,7 @@ impl Tool for GrepTool {
             "properties": {
                 "pattern": {
                     "type": "string",
-                    "description": "Search keyword or regex pattern"
+                    "description": "Regex pattern to search for. Use literal text for exact match, prefix with (?i) for case-insensitive."
                 },
                 "path": {
                     "type": "string",
@@ -66,7 +66,7 @@ impl Tool for GrepTool {
 
         let file_type = input.get("file_type").and_then(|v| v.as_str()).map(|s| s.to_string());
         let max_results = self.config.get().grep_max_results;
-        let re = Regex::new(&format!("(?i){}", regex::escape(pattern)))?;
+        let re = Regex::new(pattern)?;
         let pattern_owned = pattern.to_string();
 
         tokio::task::spawn_blocking(move || grep_sync(&re, &search_dir, max_results, file_type.as_deref()))

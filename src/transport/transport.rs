@@ -18,10 +18,12 @@ impl TokenUsage {
 /// Agent → UI event stream
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
-    /// Model is thinking (optional display)
-    Thinking(String),
-    /// Complete text response
-    TextComplete(String),
+    /// Thinking block started
+    ThinkingStart,
+    /// Incremental thinking text
+    ThinkingDelta(String),
+    /// Incremental response text
+    TextDelta(String),
     /// Tool call started
     ToolCallStart { id: String, name: String, input_preview: String },
     /// Tool call ended
