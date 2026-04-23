@@ -22,6 +22,7 @@ pub enum SseEvent {
     },
     MessageDelta {
         stop_reason: Option<String>,
+        input_tokens: u32,
         output_tokens: u32,
     },
     MessageStop,
@@ -112,12 +113,18 @@ pub fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
                 .get("stop_reason")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
+            let usage = data.get("usage");
+            let input_tokens = usage
+                .and_then(|u| u.get("input_tokens"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
             let output_tokens = data
                 .pointer("/usage/output_tokens")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0) as u32;
             Some(SseEvent::MessageDelta {
                 stop_reason,
+                input_tokens,
                 output_tokens,
             })
         }

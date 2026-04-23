@@ -155,8 +155,10 @@ pub async fn process_response(
                 }
                 SseEvent::MessageDelta {
                     stop_reason: sr,
+                    input_tokens,
                     output_tokens,
                 } => {
+                    usage.input_tokens += input_tokens as u64;
                     usage.output_tokens += output_tokens as u64;
                     if let Some(s) = sr {
                         stop_reason = match s.as_str() {
