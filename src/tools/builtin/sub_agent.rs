@@ -55,7 +55,7 @@ impl Tool for SubAgentTool {
         let agent = Arc::new(Agent::new_sub(&self.config_dir, &self.working_dir)?);
         let (_, mut rx) = agent.chat(None, task).await?;
 
-        let mut last_text = None;
+        let mut accumulated = String::new();
         while let Some(event) = rx.recv().await {
             if let Some(tx) = &ctx.events
                 && tx.send(event.clone()).await.is_err()
@@ -63,10 +63,14 @@ impl Tool for SubAgentTool {
                 break;
             }
             if let AgentEvent::TextDelta(text) = event {
-                last_text = Some(text);
+                accumulated.push_str(&text);
             }
         }
 
-        Ok(last_text.unwrap_or_else(|| "(sub-agent returned no text result)".into()))
+        Ok(if accumulated.is_empty() {
+            "(sub-agent returned no text result)".into()
+        } else {
+            accumulated
+        })
     }
 }
