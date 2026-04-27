@@ -28,6 +28,13 @@ enum BlockType {
     ToolUse,
 }
 
+struct StreamOutput {
+    assistant_content: Vec<MessageContent>,
+    usage: TokenUsage,
+    stop_reason: Option<StopReason>,
+    completed: bool, // false if transport channel closed mid-stream
+}
+
 /// Process a streaming HTTP response from the LLM.
 /// Returns (accumulated usage, whether tool calls need another loop iteration).
 pub async fn process_response(
@@ -37,11 +44,72 @@ pub async fn process_response(
     prompts: &Arc<PromptManager>,
     tx: &Sender<AgentEvent>,
 ) -> (TokenUsage, bool) {
+    let stream_output = parse_stream(response, tx).await;
+
+    if !stream_output.completed {
+        return (stream_output.usage, false);
+    }
+
+    let tool_calls: Vec<(String, String, Value)> = stream_output
+        .assistant_content
+        .iter()
+        .filter_map(|c| match c {
+            MessageContent::ToolCall { id, name, arguments } => {
+                Some((id.clone(), name.clone(), arguments.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+
+    let has_tool_calls = !tool_calls.is_empty();
+
+    session.add_message(Message {
+        role: Role::Assistant,
+        content: stream_output.assistant_content,
+    });
+
+    if has_tool_calls {
+        let results = execute_tool_calls(
+            tool_calls,
+            tools,
+            prompts,
+            tx,
+            session.working_dir.clone(),
+        )
+        .await;
+
+        session.add_message(Message {
+            role: Role::User,
+            content: results
+                .into_iter()
+                .map(|r| MessageContent::ToolResult {
+                    tool_use_id: r.id,
+                    output: r.output,
+                })
+                .collect(),
+        });
+    }
+
+    if stream_output.stop_reason == Some(StopReason::MaxTokens) {
+        let _ = tx.send(AgentEvent::Error(
+            "Output truncated: max_tokens limit reached. Consider increasing max_tokens in config."
+                .to_string(),
+        )).await;
+    }
+
+    (stream_output.usage, has_tool_calls)
+}
+
+/// Parse the SSE byte stream, dispatch real-time events to transport,
+/// and return accumulated content blocks, usage, and stop reason.
+async fn parse_stream(
+    response: reqwest::Response,
+    tx: &Sender<AgentEvent>,
+) -> StreamOutput {
     let mut parser = SseParser::new();
     let mut usage = TokenUsage::default();
     let mut assistant_content: Vec<MessageContent> = Vec::new();
 
-    // Current block tracking
     let mut block_type = BlockType::None;
     let mut thinking_text = String::new();
     let mut text_content = String::new();
@@ -90,13 +158,23 @@ pub async fn process_response(
                 SseEvent::ContentBlockDelta { delta, .. } => match delta {
                     SseDelta::Text { text } => {
                         if tx.send(AgentEvent::TextDelta(text.clone())).await.is_err() {
-                            return (usage, false);
+                            return StreamOutput {
+                                assistant_content,
+                                usage,
+                                stop_reason,
+                                completed: false,
+                            };
                         }
                         text_content.push_str(&text);
                     }
                     SseDelta::Thinking { text } => {
                         if tx.send(AgentEvent::ThinkingDelta(text.clone())).await.is_err() {
-                            return (usage, false);
+                            return StreamOutput {
+                                assistant_content,
+                                usage,
+                                stop_reason,
+                                completed: false,
+                            };
                         }
                         thinking_text.push_str(&text);
                     }
@@ -122,14 +200,7 @@ pub async fn process_response(
                             }
                         }
                         BlockType::ToolUse => {
-                            let input: Value = if tool_json_buffer.is_empty() {
-                                serde_json::json!({})
-                            } else {
-                                serde_json::from_str(&tool_json_buffer).unwrap_or_else(|_| {
-                                    warn!("Failed to parse tool input JSON for {}", tool_name);
-                                    serde_json::json!({})
-                                })
-                            };
+                            let input = parse_tool_input(&tool_json_buffer, &tool_name);
                             let input_preview = tool_input_preview(&tool_name, &input);
                             if tx
                                 .send(AgentEvent::ToolCallStart {
@@ -140,7 +211,12 @@ pub async fn process_response(
                                 .await
                                 .is_err()
                             {
-                                return (usage, false);
+                                return StreamOutput {
+                                    assistant_content,
+                                    usage,
+                                    stop_reason,
+                                    completed: false,
+                                };
                             }
                             assistant_content.push(MessageContent::ToolCall {
                                 id: tool_id.clone(),
@@ -179,102 +255,84 @@ pub async fn process_response(
         }
     }
 
-    // Flush any remaining data in parser
     for event in parser.flush() {
         if let SseEvent::MessageDelta { output_tokens, .. } = event {
             usage.output_tokens += output_tokens as u64;
         }
     }
 
-    // Collect tool calls for execution
-    let tool_calls: Vec<(String, String, Value)> = assistant_content
-        .iter()
-        .filter_map(|c| match c {
-            MessageContent::ToolCall { id, name, arguments } => {
-                Some((id.clone(), name.clone(), arguments.clone()))
-            }
-            _ => None,
-        })
-        .collect();
+    StreamOutput {
+        assistant_content,
+        usage,
+        stop_reason,
+        completed: true,
+    }
+}
 
-    // Write assistant message to session
-    session.add_message(Message {
-        role: Role::Assistant,
-        content: assistant_content,
-    });
+/// Execute tool calls in parallel, return results per call.
+async fn execute_tool_calls(
+    tool_calls: Vec<(String, String, Value)>,
+    tools: &Arc<ToolRegistry>,
+    prompts: &Arc<PromptManager>,
+    tx: &Sender<AgentEvent>,
+    working_dir: std::path::PathBuf,
+) -> Vec<ToolCallResult> {
+    let mut handles = Vec::with_capacity(tool_calls.len());
+    for (id, name, arguments) in tool_calls {
+        let tools = tools.clone();
+        let prompts = prompts.clone();
+        let tx = tx.clone();
+        let working_dir = working_dir.clone();
 
-    let has_tool_calls = !tool_calls.is_empty();
-    if has_tool_calls {
-        // Execute tool calls in parallel
-        let mut handles = Vec::with_capacity(tool_calls.len());
-        for (id, name, arguments) in tool_calls {
-            let tools = tools.clone();
-            let prompts = prompts.clone();
-            let tx = tx.clone();
-            let working_dir = session.working_dir.clone();
-
-            handles.push(tokio::spawn(async move {
-                let ctx = ToolContext {
-                    working_dir,
-                    events: Some(tx.clone()),
-                };
-                let result = tools.execute(&name, arguments.clone(), &ctx).await;
-                let output = match result {
-                    Ok(o) => o,
-                    Err(e) => {
-                        warn!("Tool '{}' failed: {e}", name);
-                        prompts
-                            .render_tool_error(&name, &e.to_string())
-                            .unwrap_or_else(|_| e.to_string())
-                    }
-                };
-
-                if tx
-                    .send(AgentEvent::ToolCallEnd {
-                        id: id.clone(),
-                        name: name.clone(),
-                        result: output.clone(),
-                    })
-                    .await
-                    .is_err()
-                {
-                    warn!("Channel closed while sending ToolCallEnd for '{}'", name);
-                }
-
-                ToolCallResult {
-                    id,
-                    output,
-                }
-            }));
-        }
-
-        let mut results = Vec::with_capacity(handles.len());
-        for handle in handles {
-            match handle.await {
-                Ok(r) => results.push(r),
+        handles.push(tokio::spawn(async move {
+            let ctx = ToolContext {
+                working_dir,
+                events: Some(tx.clone()),
+            };
+            let result = tools.execute(&name, arguments.clone(), &ctx).await;
+            let output = match result {
+                Ok(o) => o,
                 Err(e) => {
-                    error!("Tool task panicked: {e}");
+                    warn!("Tool '{}' failed: {e}", name);
+                    prompts
+                        .render_tool_error(&name, &e.to_string())
+                        .unwrap_or_else(|_| e.to_string())
                 }
-            }
-        }
+            };
 
-        session.add_message(Message {
-            role: Role::User,
-            content: results
-                .into_iter()
-                .map(|r| MessageContent::ToolResult {
-                    tool_use_id: r.id,
-                    output: r.output,
+            if tx
+                .send(AgentEvent::ToolCallEnd {
+                    id: id.clone(),
+                    name: name.clone(),
+                    result: output.clone(),
                 })
-                .collect(),
-        });
+                .await
+                .is_err()
+            {
+                warn!("Channel closed while sending ToolCallEnd for '{}'", name);
+            }
+
+            ToolCallResult { id, output }
+        }));
     }
 
-    if stop_reason == Some(StopReason::MaxTokens) {
-        let _ = tx.send(AgentEvent::Error(
-            "Output truncated: max_tokens limit reached. Consider increasing max_tokens in config.".to_string(),
-        )).await;
+    let mut results = Vec::with_capacity(handles.len());
+    for handle in handles {
+        match handle.await {
+            Ok(r) => results.push(r),
+            Err(e) => error!("Tool task panicked: {e}"),
+        }
     }
+    results
+}
 
-    (usage, has_tool_calls)
+fn parse_tool_input(json_buffer: &str, tool_name: &str) -> Value {
+    if json_buffer.is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_str(json_buffer).unwrap_or_else(|_| {
+            warn!("Failed to parse tool input JSON for {}", tool_name);
+            serde_json::json!({})
+        })
+    }
 }

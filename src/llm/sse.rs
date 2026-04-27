@@ -145,17 +145,21 @@ pub fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
 }
 
 /// SSE line parser state machine. Feeds raw bytes, emits parsed events.
+///
+/// Correctly handles:
+/// - `data:` lines arriving before `event:` lines within the same event block
+/// - Multiple `data:` lines concatenated per the SSE spec
+/// - Events are emitted on blank lines (event separator)
+#[derive(Default)]
 pub struct SseParser {
     buffer: String,
     event_type: Option<String>,
+    data_lines: Vec<String>,
 }
 
 impl SseParser {
     pub fn new() -> Self {
-        Self {
-            buffer: String::new(),
-            event_type: None,
-        }
+        Self::default()
     }
 
     /// Feed raw bytes from the HTTP stream. Returns parsed events.
@@ -167,7 +171,11 @@ impl SseParser {
 
     /// Flush any remaining buffered data (call when stream ends).
     pub fn flush(&mut self) -> Vec<SseEvent> {
-        self.try_parse()
+        let mut events = self.try_parse();
+        if let Some(evt) = self.try_emit() {
+            events.push(evt);
+        }
+        events
     }
 
     fn try_parse(&mut self) -> Vec<SseEvent> {
@@ -178,19 +186,12 @@ impl SseParser {
             self.buffer = self.buffer[pos + 1..].to_string();
 
             if line.is_empty() {
-                continue;
-            }
-
-            if let Some(data) = line.strip_prefix("data: ") {
-                if let Some(event_type) = self.event_type.take() {
-                    if let Some(evt) = parse_sse_event(&event_type, data) {
-                        events.push(evt);
-                    } else {
-                        debug!("SSE: failed to parse event '{event_type}'");
-                    }
-                } else {
-                    debug!("SSE: data line without preceding event type");
+                // Blank line: end of current event
+                if let Some(evt) = self.try_emit() {
+                    events.push(evt);
                 }
+            } else if let Some(data) = line.strip_prefix("data: ") {
+                self.data_lines.push(data.to_string());
             } else if let Some(evt) = line.strip_prefix("event: ") {
                 self.event_type = Some(evt.to_string());
             }
@@ -198,5 +199,27 @@ impl SseParser {
         }
 
         events
+    }
+
+    fn try_emit(&mut self) -> Option<SseEvent> {
+        if self.data_lines.is_empty() {
+            self.event_type = None;
+            return None;
+        }
+
+        let data = self.data_lines.join("\n");
+        let event_type = self.event_type.take();
+        self.data_lines.clear();
+
+        if let Some(et) = event_type {
+            if let Some(evt) = parse_sse_event(&et, &data) {
+                return Some(evt);
+            }
+            debug!("SSE: failed to parse event '{et}' with data={}", &data.chars().take(200).collect::<String>());
+        } else {
+            debug!("SSE: data line without preceding event type, data={}", &data.chars().take(200).collect::<String>());
+        }
+
+        None
     }
 }
